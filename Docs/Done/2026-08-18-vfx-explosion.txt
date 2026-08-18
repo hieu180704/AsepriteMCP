@@ -1,0 +1,157 @@
+WORKLOG — VFX Animation Nổ (explosion.aseprite)
+
+# Mục lục
+1. Mục Tiêu & Phạm Vi
+2. Thông Số Sản Phẩm
+3. Cách Làm & Lý Do Không Theo Nguyên Văn Recipe Animation
+4. Kết Quả Kiểm Chứng
+5. Lỗi Đã Phát Hiện Và Sửa Trong Phiên
+6. Đề Xuất Bổ Sung Playbook (CHƯA THỰC HIỆN — chờ duyệt)
+7. Lưu Ý Cho Người Tiếp Quản
+
+---
+
+# 1. Mục Tiêu & Phạm Vi
+
+Tạo một VFX animation vụ nổ bằng MCP Aseprite, xuất ra sprite sheet + JSON metadata
+dùng được cho Unity.
+
+Người dùng chốt ngày 2026-08-18:
+  - Style: giao AI tự chốt  -> chọn fireball cartoon vàng-cam-đỏ + khói xám.
+  - Canvas: 48x48.
+  - Đích export: thư mục Output/ của dự án (chưa bắn thẳng vào Unity project).
+
+Phạm vi đụng: chỉ tạo mới trong Output/vfx_explosion/. Không sửa file nào khác của dự án.
+
+---
+
+# 2. Thông Số Sản Phẩm
+
+Thư mục: Output/vfx_explosion/
+
+  explosion.aseprite        file nguồn
+  explosion_sheet.png       sheet horizontal, 432x48, scale 1 (bản Unity dùng thật)
+  explosion.json            metadata json-array, có frameTags
+  explosion.gif             scale 4, để xem nhịp
+  explosion_preview_x6.png  scale 6 + padding 2, để soi từng frame
+
+| Thông số   | Giá trị                                              |
+| Canvas     | 48x48, RGB                                           |
+| Tổng frame | 9                                                    |
+| Tag        | explode, frame 1-9, forward (JSON ghi 0-8, 0-based)  |
+| Duration   | 60/60/80/100/100/120/130/130/150 ms — tổng 930ms     |
+| Layer      | smoke, shell, flame, core, debris (dưới lên trên)    |
+| Palette    | 14 màu, sinh từ 3 lần generate_color_ramp            |
+
+Palette (R2/R3 — không màu nào bịa tay, trừ #FFFFFF dùng cho flash):
+  Lửa   #473700 #915E00 #DA7600 #FD8226 #FC9D71 #FCC7BA   (ramp từ #FF7B00)
+  Vàng  #F2DA00 #FFD24A #FBD9A4                            (ramp từ #FFD24A)
+  Khói  #362F3A #5B5560 #818083 #A7A7A7                    (ramp từ #6E6A72)
+
+Kịch bản 9 frame:
+  1     flash trắng r=6 + 12 tia
+  2-4   bung ra r=13 -> 21, 4 tầng màu nóng dần vào tâm, debris văng
+  5-6   nguội: vành lửa tối dần, lõi tắt thành nâu cháy rồi thành khói xám
+  7-9   khói bốc lên (y giảm dần), tản 3 cụm, opacity cel 215 -> 145 -> 70
+
+---
+
+# 3. Cách Làm & Lý Do Không Theo Nguyên Văn Recipe Animation
+
+`.agents/recipes/aseprite-animation.md` mục 2 bắt buộc "vẽ một lần rồi propagate + tween",
+vì failure mode số 1 của AI là nhân vật biến dạng giữa các frame.
+
+VFX nổ KHÔNG áp dụng được nguyên tắc đó: không có bộ phận nào tĩnh xuyên frame để
+`propagate_cels`, và không có bộ phận nào chỉ dịch chuyển để `tween_cel_positions`. Mọi frame
+là một hình khác nhau.
+
+Thay vào đó dùng shape primitives dựng lại vòng lửa mỗi frame theo bán kính tăng dần
+(`draw_circle_at` filled, xếp lớp qua thứ tự layer). Vẫn đúng R5 vì nổ là hình tròn đối xứng —
+đây là loại hình `draw_circle_at` làm tốt nhất, không phải loại hình sợ semantic drift.
+`draw_pixels_at` chỉ dùng cho debris và nét tán rìa, mỗi lần <= 20 pixel (giới hạn R5 là ~30).
+
+Kỹ thuật đáng ghi lại: **không có tool khoét lỗ hình tròn**. Muốn vành lửa rỗng ruột thì vẽ
+một circle filled màu tối ở layer TRÊN, không tìm cách xoá phần giữa. Frame 5-6 làm theo cách này.
+
+---
+
+# 4. Kết Quả Kiểm Chứng
+
+Tầng 1 — text (playbook 4.1):
+  get_sprite_info    48x48, 9 frame, 5 layer, tag explode 1-9 forward — đúng kế hoạch.
+  get_color_stats    frame 4: 6 màu unique / 1457 pixel đục — kỷ luật palette đạt.
+  validate_scene     missing_layers rỗng. missing_cels có 20 mục, TẤT CẢ đều là chủ đích
+                     (smoke chưa xuất hiện ở frame 1-6; shell/flame/core đã tắt ở frame 7-9).
+  audit_animation    0 overlap, 0 out_of_range, 25 cel.
+  get_composite_rect frame 1 tâm (20,20)-(27,21): #ffffff a:255 — lõi flash có pixel thật.
+
+  compare_frames các cặp liền kề (bản cuối):
+    1-2  20.66%   4-5  50.91%   7-8  34.59%
+    2-3  31.12%   5-6  54.38%   8-9  33.03%
+    3-4  38.19%   6-7  75.30%
+
+  Không cặp nào 0% -> mọi frame đều có thay đổi thật.
+  Ngưỡng ">40% là mất nhất quán" của checklist KHÔNG áp dụng ở đây: ngưỡng đó sinh ra để bắt
+  nhân vật biến dạng. Với VFX, biến đổi lớn giữa frame chính là nội dung của hiệu ứng.
+  Cặp 6-7 (75.3%) là cú chuyển vành lửa -> khói, đã giảm sốc bằng cách thêm tàn lửa ở frame 7
+  nhưng vẫn là bước nhảy lớn nhất của chuỗi. Nếu thấy giật khi chạy trong game, cách sửa rẻ nhất
+  là chèn thêm 1 frame trung gian giữa 6 và 7.
+
+Tầng 2 — mắt (playbook 4.2): ĐÃ CHẠY. Xem mục 5.
+
+---
+
+# 5. Lỗi Đã Phát Hiện Và Sửa Trong Phiên
+
+Lần export đầu tiên nhìn bằng mắt -> KHÔNG ĐẠT. Bốn lỗi, ba lỗi thật và một lỗi đọc:
+
+  L1 (thật) Frame 5-6 thành "quả cầu đen". Nguyên nhân: chọn #362F3A (tím-đen, tông khói lạnh)
+            làm màu lõi tắt và cho bán kính 11 -> 18, quá to và quá lạnh so với palette lửa.
+            Sửa: lõi tắt chuyển sang #915E00 / #5B5560 (nâu cháy rồi khói ấm), thu nhỏ bán kính.
+
+  L2 (thật) Frame 7 có vòng tròn viền 1px bao quanh cụm khói, đọc ra như "bong bóng".
+            Nguyên nhân: cố nối frame 6->7 bằng một circle outline hoàn hảo — đường tròn hình
+            học không đọc ra lửa. Sửa: xoá vòng đó, thay bằng 9 pixel tàn lửa rời rạc.
+
+  L3 (thật) Silhouette quá tròn đều, thiếu nét tán. Sửa: thêm 12 pixel lồi ra ở rìa shell
+            frame 3 và 4, đặt lệch 22.5 độ so với các hướng debris để không chồng nhau.
+
+  L4 (LỖI ĐỌC, không phải lỗi hình) Ban đầu kết luận "frame 1 là vòng nhẫn rỗng". Sai.
+            get_composite_rect đã chứng minh tâm frame 1 là #ffffff a:255 — lõi đặc.
+            Nguyên nhân đọc sai: preview PNG nền trong suốt được hiển thị trên nền TRẮNG,
+            nên lõi flash trắng lẫn hoàn toàn vào nền.
+
+Cách xử lý L4 (nên tái sử dụng): copy_sprite ra file tạm ngoài dự án -> add_layer "qc_bg"
+-> reorder_layer về vị trí 1 -> draw_rectangle_at phủ kín màu #232733 -> propagate_cels sang
+mọi frame -> export scale 6 rồi đọc. File tạm để ở scratchpad, không để lẫn vào Output/.
+Trên nền tối, cả 9 frame đọc đúng ý đồ: flash -> bung -> peak -> nguội -> khói tan.
+
+---
+
+# 6. Đề Xuất Bổ Sung Playbook (CHƯA THỰC HIỆN — chờ duyệt)
+
+Theo quy định không tự sửa tài liệu gốc, chỉ nêu đề xuất:
+
+  Đ1. `.agents/recipes/aseprite-00-playbook.md` mục 4.2 nên bổ sung: với asset có vùng sáng gần
+      trắng hoặc gần đen (VFX, tia sáng, bóng đổ), verify bằng mắt trên nền trong suốt sẽ cho
+      kết luận sai. Phải dựng preview trên nền tương phản theo cách ở mục 5 trên đây.
+
+  Đ2. `.agents/recipes/aseprite-animation.md` mục 5 nên ghi rõ ngưỡng compare_frames <= 40% chỉ
+      áp dụng cho animation nhân vật. VFX/hiệu ứng môi trường vượt ngưỡng là bình thường, cần
+      tiêu chí khác (không có cặp 0%, và bước nhảy lớn nhất nằm đúng chỗ chuyển pha có chủ đích).
+
+  Đ3. Cân nhắc thêm một recipe `aseprite-vfx.md`: nhóm việc này khác hẳn character animation ở
+      chỗ không dùng được propagate/tween, và có kỹ thuật riêng (xếp lớp để tạo vành rỗng,
+      dùng cel opacity để fade khói).
+
+---
+
+# 7. Lưu Ý Cho Người Tiếp Quản
+
+- Sheet dùng cho Unity là `explosion_sheet.png` (scale 1, 432x48). File `explosion_preview_x6.png`
+  chỉ để soi bằng mắt, đừng import vào Unity.
+- `explosion.json` ghi tag theo 0-based (`from:0, to:8`), còn tool MCP nhận 1-based. Đây là hành vi
+  của Aseprite, không phải lỗi.
+- Convention export cho Unity vẫn là điểm mở (overview.txt mục 5.1). Khi chốt xong, asset này nên
+  được export lại thẳng vào thư mục đích thay vì nằm ở Output/.
+- Nếu cần vụ nổ to hơn: giữ nguyên 48x48 rồi tăng `scale` lúc export (R7), đừng vẽ lại ở canvas lớn.
