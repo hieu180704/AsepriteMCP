@@ -8,3 +8,5 @@
 
 Áp dụng quy trình 4 pha: `explore -> propose -> confirm -> execute`.
 Đọc thông tin tại `Docs/SourceOfTruth/` — bắt đầu từ `overview.txt`.
+
+**Trước khi thao tác Aseprite qua MCP, đọc `.agents/recipes/aseprite-00-playbook.md`** — 8 rule cứng và giao thức kiểm chứng bắt buộc. Chọn recipe theo việc: `aseprite-static-sprite.md` (vẽ mới), `aseprite-animation.md` (animation), `aseprite-edit-existing.md` (sửa asset có sẵn).

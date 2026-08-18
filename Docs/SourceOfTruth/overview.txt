@@ -116,6 +116,21 @@ quy ước pivot, và cách ánh xạ animation tag của Aseprite sang Unity.
 Xem chi tiết rủi ro ở mục 6. Cần quyết: mua bản quyền và cài vào đường dẫn cố định, hay giữ
 nguyên hiện trạng và chấp nhận rủi ro.
 
+## 5.3. Hooks không chạy trên Claude Code — ĐÃ CHỐT SỬA, CHƯA THỰC HIỆN
+[GT — kiểm chứng 2026-08-18 bằng schema chính thức tại https://code.claude.com/docs/en/hooks]
+Ba lỗi độc lập, mỗi lỗi đủ để vô hiệu hoá toàn bộ hooks:
+  1. Cấu trúc sai: `.claude/settings.json` dùng `{matcher, command}`, schema đúng là
+     `{matcher, hooks:[{type:"command", command}]}` — thiếu mảng lồng bên trong.
+  2. Matcher sai: `"tool == 'Write' || tool == 'Edit'"` chứa ký tự đặc biệt nên bị Claude Code
+     hiểu là regex và không khớp tool nào. Đúng phải là `"Write|Edit"`.
+  3. Input sai: `safety-guard.js` và `read-guard.js` đọc `process.argv[2]`, nhưng Claude Code
+     gửi dữ liệu qua **stdin dạng JSON**.
+Hệ quả thực tế: `safety-guard.js` luôn nhận chuỗi rỗng nên không pattern nào khớp — guard bảo vệ
+`.env` hiện là hình nộm, luôn trả SAFE.
+Lưu ý công bằng: format trong `.agents/hooks.json` (`tool == '...'`) có thể đúng với Antigravity.
+Vấn đề nằm ở chỗ tư duy đó được bê nguyên sang `.claude/settings.json` nơi schema khác hẳn.
+Người dùng đã chốt sửa (ưu tiên 1 của phiên kế tiếp).
+
 ---
 
 ## Các câu hỏi ĐÃ ĐÓNG (giữ lại để không hỏi lại)
@@ -154,6 +169,19 @@ So sánh 10 repo qua GitHub API. Chi tiết số liệu và lý do ở
 - **Nền tảng phát triển:** Windows 11. Đường dẫn, script và cách gọi tiến trình phải hoạt động
   đúng trên Windows. [GT]
 
+- **Nguồn của rules/recipes/hooks là `.agents/`, KHÔNG phải `.claude/`.** [GT — kiểm chứng 2026-08-18]
+  `scripts/sync-agents.js` copy một chiều `.agents/` → `.claude/` (rules, recipes, hooks) và
+  chuyển `.agents/skills/<name>/SKILL.md` thành `.claude/commands/<name>.md`.
+  Sửa thẳng trong `.claude/` sẽ tạo file mồ côi: script không xoá file thừa nên file vẫn tồn tại,
+  nhưng vì không có ở nguồn nên **không bao giờ đến được các AI client khác** — đi ngược ràng buộc
+  model-agnostic. Quy trình đúng: sửa ở `.agents/` rồi chạy `node scripts/sync-agents.js`.
+
+- **Giới hạn đã biết của AI khi vẽ pixel art:** [INF — dựa trên nghiên cứu ngoài, xem worklog
+  `Docs/Done/2026-08-18-viet-recipes-aseprite-cho-ai.txt`]
+  Vẽ pixel-by-pixel là điểm yếu cấu trúc của LLM; server upstream **không trả ảnh về cho model**
+  (mọi tool signature là `-> str`) nên AI không tự nhìn thấy thứ nó vừa vẽ. Hai điều này định hình
+  toàn bộ bộ recipes: compose bằng shape primitives, và bắt buộc kiểm chứng bằng tool đọc lại.
+
 - **Cập nhật server upstream:** `vendor/aseprite-mcp` là clone `--depth 1`, không phải submodule.
   Muốn cập nhật phải `git pull` thủ công trong thư mục đó. Sau khi pull, chạy lại `uv sync` và
   smoke test trước khi tin là còn hoạt động. [INF]
@@ -178,7 +206,23 @@ So sánh 10 repo qua GitHub API. Chi tiết số liệu và lý do ở
 - Định nghĩa dự án đã được đính chính: **dùng MCP server có sẵn, không tự xây.**
 - Hạ tầng MCP đã cài và kiểm chứng đạt. Toàn tuyến AI → MCP → Aseprite → file PNG chạy thật.
 - Dự án **không có và không cần** source code server của riêng mình.
-- Còn 2 điểm mở: convention export Unity (5.1) và xử lý bản cài Aseprite (5.2).
+- **Đã có bộ recipes hướng dẫn AI thao tác Aseprite** (4 file, xem 7.4).
+- Còn 3 điểm mở: convention export Unity (5.1), bản cài Aseprite (5.2), hooks hỏng (5.3).
+
+## 7.4. Bộ recipes thao tác Aseprite (2026-08-18) [GT]
+Nguồn tại `.agents/recipes/`, đã sync sang `.claude/recipes/`:
+- `aseprite-00-playbook.md` — **đọc trước tiên.** Giới hạn đã biết của AI, 8 rule cứng, giao thức
+  kiểm chứng 2 tầng (text cho mọi client / ảnh cho client đọc được ảnh), bảng tra tool.
+- `aseprite-static-sprite.md` — vẽ sprite tĩnh, quy trình 7 bước.
+- `aseprite-animation.md` — animation nhiều frame, trọng tâm là propagate + tween thay vì vẽ lại.
+- `aseprite-edit-existing.md` — recolor/resize/batch, nhóm việc AI làm tốt nhất.
+
+Ba rule cứng quan trọng nhất rút ra: (1) luôn dùng biến thể tool `*_at` để tránh active-cel drift;
+(2) chốt palette và ramp màu trước khi vẽ; (3) cấm báo hoàn thành khi chưa đọc lại kết quả bằng
+tool. Tên tool và tham số trong recipes đã đối chiếu với signature thật trong
+`vendor/aseprite-mcp/aseprite_mcp/`.
+
+Ba file entry-point `AGENTS.md` / `CLAUDE.md` / `CHATGPT.md` đều đã trỏ tới playbook.
 
 ## 7.2. Hạ tầng MCP đã cài đặt (2026-08-18) [GT]
 - **Server:** `diivi/aseprite-mcp` — clone tại `vendor/aseprite-mcp` (MIT, 422 sao, 6 contributor,
@@ -195,10 +239,24 @@ So sánh 10 repo qua GitHub API. Chi tiết số liệu và lý do ở
   scopes". Muốn đổi đường dẫn thì sửa cả file mẫu lẫn entry local (`claude mcp remove/add`).
 - **Đường dẫn Aseprite:** khai báo trong `vendor/aseprite-mcp/.env` qua biến `ASEPRITE_PATH`.
 
-## 7.3. Bước kế tiếp đề xuất [INF]
-1. **Approve MCP server trong Claude Code** — chạy `claude`, duyệt server `aseprite`. Bắt buộc
-   thao tác thủ công, đây là cơ chế bảo mật của Claude Code với server project-scoped.
-2. **Dùng thử thực tế** — cho AI tạo vài asset thật để biết 116 tools còn thiếu gì so với nhu cầu.
-   Làm việc này trước khi bàn convention sẽ có dữ liệu thật để quyết, thay vì bàn trên giấy.
-3. **Chốt convention export cho Unity (5.1).**
-4. **Xử lý vấn đề đường dẫn/bản quyền Aseprite (5.2).**
+## 7.3. Bước kế tiếp — ĐÃ CHỐT với người dùng ngày 2026-08-18 [GT]
+Thứ tự ưu tiên cho phiên kế tiếp:
+1. **Sửa hooks đang hỏng (5.3)** — làm trước tiên. Thêm hook mới lên nền hỏng là vô nghĩa.
+   Phạm vi: sửa schema `.claude/settings.json`, đổi 2 script sang đọc stdin JSON.
+2. **Tạo skill `/asset-qc`** — chạy trọn bộ verify trên một file `.aseprite`: `get_sprite_info`
+   → `get_color_stats` → `validate_scene` → `audit_animation` → `compare_frames` các frame liền kề
+   → export PNG → nhìn. Lý do ưu tiên cao: đây đúng là khâu model hay bỏ qua nhất, và là thứ bù
+   đắp cho việc server không trả ảnh về.
+3. **Tạo rule ngắn `.agents/rules/aseprite-protocol.md`** (~20 dòng) — 8 rule cứng dạng rút gọn,
+   nạp thường trực mọi phiên, trỏ sang playbook cho chi tiết. Che trường hợp model quên đọc recipe.
+
+Đã cân nhắc và **loại**: hook inject playbook mỗi phiên (tốn token, mục 3 đạt cùng mục tiêu rẻ
+hơn); skill vẽ sprite tự động end-to-end (vẽ từ đầu là khâu AI yếu nhất, đóng thành một lệnh sẽ
+tạo kỳ vọng sai và giấu mất checkpoint cần người xem); skill riêng cho từng loại asset (3 recipe
+hiện tại đã bao được).
+
+Sau đó, theo thứ tự tự nhiên:
+4. **Chạy thử thực tế bằng chính recipes** để biết chỗ nào hụt rồi sửa lại theo kết quả thật.
+5. **Chốt convention export cho Unity (5.1).**
+6. **Xử lý vấn đề đường dẫn/bản quyền Aseprite (5.2).** Sau bước này mới nên làm skill
+   `/aseprite-doctor` — chờ đường dẫn ổn định rồi mới có cái để kiểm.

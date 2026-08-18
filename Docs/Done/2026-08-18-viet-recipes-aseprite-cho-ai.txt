@@ -1,0 +1,146 @@
+WORKLOG FRAGMENT: Nghiên Cứu & Viết Bộ Recipes Cho AI Thao Tác Aseprite
+
+# Mục lục
+1. Tóm Tắt Công Việc
+2. Kết Quả Nghiên Cứu Ngoài
+3. Phát Hiện Từ Source Server
+4. Chi Tiết Thay Đổi
+5. Kết Quả Kiểm Chứng
+6. Vấn Đề Phát Hiện — Cần Xử Lý
+
+---
+
+# 1. Tóm Tắt Công Việc
+- **Mục tiêu:** Khảo sát xem đã có nghiên cứu nào về việc tối ưu cho AI làm việc với Aseprite qua
+  MCP chưa, rồi viết bộ recipes/rules dựa trên kết quả đó.
+- **Thời gian hoàn thành:** 2026-08-18
+- **Kết quả:** Đã tạo 4 recipe tại `.agents/recipes/`, đồng bộ sang `.claude/recipes/`, và trỏ
+  đường từ cả ba file entry-point.
+
+---
+
+# 2. Kết Quả Nghiên Cứu Ngoài
+
+**Có nghiên cứu trực diện, nhưng chưa ai đóng gói thành bộ recipes dùng được.**
+
+## 2.1. Thực nghiệm "Draw me a swordsman" (Lj Miranda, 07/2025)
+https://ljvmiranda921.github.io/notebook/2025/07/20/draw-me-a-swordsman/
+Đúng bài toán của dự án: agent LLM → Aseprite MCP (9 tools) → vẽ swordsman tĩnh + spritesheet
+4 frame. Thang điểm SwordsBench trên 5 model:
+  Claude Opus 4: 2.5 | Claude Sonnet 4: 2.0 | GPT-4.1: 1.25 | GPT-4o: 0.75 | Qwen3 32B: 0.25
+
+Ba failure mode ghi nhận được — đây là phần giá trị nhất, và là lý do tồn tại của bộ recipes:
+  1. Character inconsistency — nhân vật biến dạng giữa các frame dù ý đồ chuyển động đúng.
+  2. Semantic drift — kiếm vẽ ra thành súng; nhân vật thành khối màu vô định hình.
+  3. Tool blame-shifting — model tự khẳng định đã gọi tool thành công trong khi tool không chạy.
+
+Khuyến nghị của tác giả: ép nhất quán nhân vật xuyên frame bằng prompt; tool nên ở mức abstraction
+cao thay vì primitive; phải có visual feedback loop. Kết luận đáng chú ý: use-case mạnh nhất
+KHÔNG phải "AI sáng tác art từ đầu" mà là augment workflow có sẵn (recolor, resize, export).
+
+## 2.2. Pixel Art Bench
+https://huggingface.co/blog/AINovice2005/pixel-art-bench
+Bắt LLM xuất JSON grid 24x24. Model tốt nhất đạt định dạng hợp lệ 100% nhưng chất lượng chỉ
+~0.42/1.0. Fine-tune không cứu được. Nguyên nhân gốc: mismatch giữa sinh token tuần tự 1D và tác
+vụ 2D cần giữ nhất quán toàn cục trên 576 ô.
+=> Hệ quả trực tiếp: rule "compose bằng shape primitives, không rải pixel thủ công".
+
+## 2.3. Các nguồn khác
+- `willibrandon/pixel-mcp`: triết lý "tool gánh phần thẩm mỹ thay model" — mọi tool vẽ đều snap
+  màu qua LAB, có `analyze_reference` trả brightness map, `apply_shading` theo 8 hướng sáng.
+- `rkdfx/aseprite-mcp`: có nhúng MCP prompts hướng dẫn LLM dựng artwork phức tạp.
+- Anthropic — Writing tools for agents: https://www.anthropic.com/engineering/writing-tools-for-agents
+
+---
+
+# 3. Phát Hiện Từ Source Server
+
+## 3.1. Server KHÔNG trả ảnh về cho model [GT — grep toàn bộ aseprite_mcp/]
+Không tool nào trả `ImageContent`/base64; tất cả signature đều `-> str`. Model **không tự nhìn
+thấy** thứ nó vừa vẽ. Đây là khác biệt lớn nhất so với người dùng Aseprite thật, và là gap lớn
+nhất so với khuyến nghị "visual feedback loop" ở mục 2.1.
+Cách bù: bộ tool self-check dạng text — `get_composite_rect` (pixel_read.py:228),
+`compare_frames` (analysis.py:132), `get_color_stats` (analysis.py:229),
+`validate_scene` (quality.py:128), `audit_animation` (quality.py:214).
+Với client đọc được ảnh (Claude Code): export PNG rồi đọc file. Với client khác: dừng ở tầng text
+và **nói rõ là chưa verify bằng mắt**.
+
+## 3.2. Upstream đã có sẵn một phần guidance
+`vendor/aseprite-mcp/aseprite_mcp/tools/guide.py:4` — tool `animation_workflow_guide(use_case)`
+trả về đúng các nguyên tắc mà nghiên cứu khuyến nghị: block key pose ở frame 1 rồi copy, dùng
+`propagate_cels` cho layer tĩnh, animate bằng tween/offset chứ không vẽ lại, dùng tool `*_at` để
+tránh active-cel drift (guide.py:9-16).
+=> Quyết định: recipes **bọc và mở rộng** tool này, không viết lại.
+
+## 3.3. Đường dẫn phải là tuyệt đối
+`core/commands.py:77` kiểm file bằng `os.path.exists(filename)`, giải theo thư mục làm việc của
+tiến trình server — không phải thư mục dự án. Đường dẫn tương đối sẽ gãy không báo trước.
+
+---
+
+# 4. Chi Tiết Thay Đổi
+
+## 4.1. Tệp đã tạo — `.agents/recipes/`
+- `aseprite-00-playbook.md` — đọc trước tiên. Gồm: giới hạn đã biết của AI (có số liệu), 8 rule
+  cứng, giao thức kiểm chứng 2 tầng, bảng tra tool theo nhu cầu, nguồn tham chiếu.
+- `aseprite-static-sprite.md` — vẽ sprite tĩnh, quy trình 7 bước, checklist, bảng lỗi thường gặp.
+- `aseprite-animation.md` — animation nhiều frame. Trọng tâm: chặn failure mode số 1 bằng
+  propagate + tween. Có bảng tham chiếu thực tế từ `Output/knight/`.
+- `aseprite-edit-existing.md` — recolor/resize/batch, kèm 4 rule an toàn dữ liệu.
+
+## 4.2. Tệp đã sửa
+- `.agents/recipes/00-recipe-index.md` — tách rõ 2 nhóm: `recipe-*.md` (mẫu định dạng văn bản,
+  universal) và `aseprite-*.md` (quy trình thao tác tool).
+- `AGENTS.md` — thêm pointer vào Bản Đồ Ngữ Cảnh; thêm 2 quy tắc đặc thù (bắt buộc verify; nguồn
+  rules/recipes là `.agents/`).
+- `CLAUDE.md`, `CHATGPT.md` — thêm pointer tới playbook.
+- `Docs/SourceOfTruth/overview.txt` — thêm mục 5.3 (hooks hỏng), 2 bullet ở mục 6 (nguồn `.agents/`,
+  giới hạn AI vẽ pixel art), mục 7.4 (bộ recipes), cập nhật 7.1 và 7.3.
+
+## 4.3. Ba rule cứng quan trọng nhất trong playbook
+1. **Luôn dùng biến thể `*_at`** (`draw_pixels_at`, `draw_rectangle_at`...). Bản không hậu tố vẽ
+   lên active cel, mà active cel trôi theo thao tác trước đó — đây là lỗi khó phát hiện nhất.
+2. **Chốt palette và ramp màu trước khi vẽ.** Shading phải lấy màu từ `generate_color_ramp`
+   (palette.py:274-289, có hue-shifting chuẩn), không tự nhân/chia độ sáng.
+3. **Cấm báo hoàn thành khi chưa đọc lại kết quả bằng tool.** Thông báo thành công của tool chỉ
+   chứng minh lệnh chạy, không chứng minh hình vẽ đúng. Rule này sinh ra để chặn blame-shifting.
+
+---
+
+# 5. Kết Quả Kiểm Chứng
+
+## 5.1. Tên tool và tham số (ĐẠT)
+Toàn bộ tên tool và tham số dùng trong 4 recipe đã đối chiếu với signature thật bằng grep
+`^async def` trên `vendor/aseprite-mcp/aseprite_mcp/tools/`. Không có tool nào bịa.
+
+## 5.2. Đồng bộ (ĐẠT)
+Chạy `node scripts/sync-agents.js`. `diff -rq .agents/recipes .claude/recipes` trả về rỗng —
+hai thư mục identical. `.claude/recipes/` hiện có 11 file (7 universal + 4 aseprite).
+
+## 5.3. Số liệu tham chiếu lấy từ sản phẩm thật (ĐẠT)
+`Output/knight/knight.json`: canvas 32x32, 19 frame, duration 150ms, sheet horizontal 608x32,
+data `json-array` có `frameTags`, 5 tag (idle 0-3 pingpong, walk 4-9, attack 10-13, hurt 14-15,
+death 16-18 — 0-based trong JSON, còn tool nhận 1-based).
+
+---
+
+# 6. Vấn Đề Phát Hiện — Cần Xử Lý
+
+## 6.1. Hooks không chạy trên Claude Code — ưu tiên 1 phiên sau
+Chi tiết đầy đủ ở mục 5.3 của `Docs/SourceOfTruth/overview.txt`. Tóm tắt: sai cấu trúc JSON, sai
+matcher, sai cách nhận input (argv thay vì stdin). Hệ quả: `safety-guard.js` luôn trả SAFE nên
+guard bảo vệ `.env` là hình nộm.
+
+## 6.2. Chưa chạy thử recipes trên tác vụ thật
+Recipes viết dựa trên nghiên cứu + đọc source, chưa qua vòng kiểm nghiệm thực tế. Nên chạy thử
+rồi sửa lại theo kết quả.
+
+## 6.3. Chưa có recipe Unity export
+Cố ý bỏ trống: convention export Unity là điểm mở 5.1, người dùng chưa chốt cấu trúc thư mục,
+quy tắc đặt tên, format JSON, quy ước pivot. Viết lúc này sẽ là bịa.
+
+## 6.4. Bài học về vị trí file cấu hình
+Phiên này ban đầu đề xuất đặt recipes vào `Docs/SourceOfTruth/recipes/` mà chưa kiểm tra
+`.claude/recipes/` đã tồn tại. Sau đó lại suýt viết thẳng vào `.claude/` trong khi nguồn thật là
+`.agents/`. Bài học: **kiểm tra thư mục thực tế trước khi đề xuất vị trí file**, đặc biệt trong
+workspace có cơ chế sync một chiều.

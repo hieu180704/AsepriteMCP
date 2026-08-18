@@ -1,0 +1,82 @@
+BÀN GIAO PHIÊN LÀM VIỆC — 2026-08-18
+
+# Mục lục
+1. Trạng Thái Hiện Tại
+2. Những Việc Đã Xong
+3. Đầu Việc Tiếp Theo
+4. Bẫy Ngầm & Quy Tắc Cần Nhớ
+
+---
+
+# 1. Trạng Thái Hiện Tại
+- **Nhánh Git:** HEAD (detached) — commit gần nhất `7929fef`. Các thay đổi phiên này CHƯA commit.
+- **Hạ tầng:** MCP server `diivi/aseprite-mcp` đã kết nối, 116 tools, chạy thật đạt.
+- **Tài liệu:** đã có bộ recipes hướng dẫn AI thao tác Aseprite (4 file).
+- **Điểm mở còn lại:** 3 — convention Unity (5.1), bản cài Aseprite (5.2), hooks hỏng (5.3).
+
+---
+
+# 2. Những Việc Đã Xong
+- [x] Khảo sát nghiên cứu ngoài về tối ưu AI làm việc với Aseprite qua MCP.
+- [x] Viết 4 recipe tại `.agents/recipes/` (playbook + static sprite + animation + edit existing).
+- [x] Đồng bộ sang `.claude/recipes/` bằng `node scripts/sync-agents.js`, verify identical.
+- [x] Trỏ đường từ `AGENTS.md`, `CLAUDE.md`, `CHATGPT.md` tới playbook.
+- [x] Cập nhật `Docs/SourceOfTruth/overview.txt` (mục 5.3, 6, 7.1, 7.3, 7.4).
+- [x] Worklog fragment: `Docs/Done/2026-08-18-viet-recipes-aseprite-cho-ai.txt`.
+
+---
+
+# 3. Đầu Việc Tiếp Theo
+
+Người dùng đã chốt làm 3 việc này ở phiên mới, theo đúng thứ tự:
+
+- [ ] **(1) Sửa hooks đang hỏng.** Làm trước tiên — thêm hook mới lên nền hỏng là vô nghĩa.
+      Phạm vi: sửa schema `.claude/settings.json` sang dạng `{matcher, hooks:[{type, command}]}`,
+      đổi matcher sang `"Write|Edit"` / `"Read"`, sửa `safety-guard.js` và `read-guard.js` đọc
+      stdin JSON thay vì `process.argv[2]`.
+      Cân nhắc khi làm: 2 script này nằm ở `.agents/hooks/` và được sync sang `.claude/hooks/`.
+      Nếu Antigravity thật sự truyền argv thì sửa thẳng sẽ làm hỏng phía Antigravity — cần hỏi
+      người dùng có còn dùng Antigravity không trước khi quyết cách sửa.
+
+- [ ] **(2) Tạo skill `/asset-qc`.** Chạy trọn bộ verify trên một file `.aseprite`:
+      `get_sprite_info` → `get_color_stats` → `validate_scene` → `audit_animation` →
+      `compare_frames` các frame liền kề → `export_sprite` PNG → nhìn.
+      Ngưỡng cảnh báo đã định nghĩa sẵn ở mục 4.1 của `aseprite-00-playbook.md` — dùng lại,
+      đừng định nghĩa lại.
+      Tạo ở `.agents/skills/asset-qc/SKILL.md`, sync sẽ tự sinh `.claude/commands/asset-qc.md`.
+
+- [ ] **(3) Tạo rule `.agents/rules/aseprite-protocol.md`** (~20 dòng). Bản rút gọn của 8 rule
+      cứng, nạp thường trực mọi phiên, trỏ sang playbook cho chi tiết. Giữ ngắn — mục đích là che
+      trường hợp model quên đọc recipe, không phải thay thế recipe.
+
+Sau đó (chưa chốt lịch):
+- [ ] Chạy thử recipes trên tác vụ thật rồi sửa lại theo kết quả.
+- [ ] Chốt convention export Unity (5.1).
+- [ ] Xử lý đường dẫn/bản quyền Aseprite (5.2), rồi mới làm `/aseprite-doctor`.
+
+---
+
+# 4. Bẫy Ngầm & Quy Tắc Cần Nhớ
+
+- **`.claude/` là BẢN SAO, không phải nguồn.** `scripts/sync-agents.js` copy một chiều
+  `.agents/` → `.claude/`. Sửa thẳng trong `.claude/` tạo file mồ côi, không đến được model khác.
+  Luôn sửa ở `.agents/` rồi chạy `node scripts/sync-agents.js`.
+
+- **Kiểm tra thư mục thực tế trước khi đề xuất vị trí file.** Phiên này đã sai hai lần liên tiếp
+  vì bỏ qua bước đó.
+
+- **Server không trả ảnh về cho model.** Mọi tool signature là `-> str`. AI không tự nhìn thấy thứ
+  nó vẽ — đây là lý do giao thức kiểm chứng tồn tại. Đừng tin thông báo "thành công" của tool.
+
+- **Đường dẫn tới file Aseprite phải tuyệt đối.** `core/commands.py:77` giải đường dẫn tương đối
+  theo cwd của tiến trình server, không phải thư mục dự án.
+
+- **Frame index: tool nhận 1-based, JSON export ra ghi 0-based.** Rất dễ nhầm khi đối chiếu tag.
+
+- **Không đề xuất tự xây MCP server.** Ràng buộc cứng, người dùng đã chốt 2026-08-18.
+
+- **Bản Aseprite đang dùng là bản bẻ khoá nằm trong `Downloads/`.** Đường dẫn chắc chắn sẽ gãy.
+  Khi hàng loạt tool báo lỗi lạ, kiểm `ASEPRITE_PATH` trong `vendor/aseprite-mcp/.env` trước tiên.
+
+- **Quy trình 4 pha bắt buộc:** explore → propose → confirm → execute. Dừng cuối pha Propose chờ
+  duyệt, không tự nhảy pha.

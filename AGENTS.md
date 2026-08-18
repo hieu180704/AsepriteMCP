@@ -27,6 +27,7 @@
 - **Nhật ký quyết định:** `Docs/Decisions/`
 - **Tiêu chí nghiệm thu:** `Docs/QC/`
 - **Tiến độ đã hoàn thành:** `Docs/Done/`
+- **Recipes thao tác Aseprite (đọc trước khi gọi tool MCP):** `.agents/recipes/aseprite-00-playbook.md`
 - **MCP server bên thứ ba:** `vendor/aseprite-mcp/` (code upstream, không sửa trừ khi có lý do rõ ràng)
 - **Cấu hình MCP mẫu cho client khác:** `mcp-client-config.example.json` ở gốc dự án (Claude Code dùng scope `local`, không đọc file này)
 
@@ -39,3 +40,5 @@
 - **Model-agnostic là ràng buộc cứng:** cấu hình và quy ước không được gắn cứng vào một AI client cụ thể. Giữ `.mcp.json` ở dạng chuẩn để client nào cũng copy sang được.
 - **Điểm mở còn lại:** convention export cho Unity, và xử lý bản cài Aseprite hiện tại (bản bẻ khoá nằm trong `Downloads/`, đường dẫn không ổn định). Chi tiết ở mục 5 và 6 của `Docs/SourceOfTruth/overview.txt`.
 - **Đầu ra hướng Unity:** khi thiết kế format export, ưu tiên thứ Unity đọc được ngay (sprite sheet + JSON metadata) thay vì format trung gian phải convert thêm.
+- **Thao tác Aseprite phải theo recipe:** đọc `.agents/recipes/aseprite-00-playbook.md` trước khi gọi tool MCP. Bắt buộc kiểm chứng kết quả bằng tool đọc lại (`get_sprite_info`, `get_composite_rect`, `compare_frames`...) — server không trả ảnh về nên không tự "nhìn" được thứ vừa vẽ; cấm báo hoàn thành khi chưa verify.
+- **Nguồn của rules/recipes/hooks là `.agents/`**, không phải `.claude/`. Sửa ở `.agents/` rồi chạy `node scripts/sync-agents.js` để đồng bộ sang `.claude/`. Sửa thẳng trong `.claude/` sẽ tạo file mồ côi, không đến được các model khác.
