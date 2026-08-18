@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "tool == 'Write' || tool == 'Edit'",
+        "command": "node .claude/hooks/safety-guard.js"
+      },
+      {
+        "matcher": "tool == 'Read'",
+        "command": "node .claude/hooks/read-guard.js"
+      }
+    ]
+  }
+}

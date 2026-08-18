@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "tool == 'write_to_file' || tool == 'replace_file_content' || tool == 'multi_replace_file_content'",
+        "script": "node .agents/hooks/safety-guard.js"
+      },
+      {
+        "matcher": "tool == 'view_file' || tool == 'read_url_content'",
+        "script": "node .agents/hooks/read-guard.js"
+      },
+      {
+        "matcher": "tool == 'run_command' && command.includes('git commit')",
+        "script": "node .agents/hooks/closeout-trigger.js"
+      }
+    ]
+  }
+}

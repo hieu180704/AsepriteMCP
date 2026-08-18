@@ -1,0 +1,120 @@
+WORKLOG FRAGMENT: Khảo Sát & Kết Nối Aseprite Qua MCP
+
+# Mục lục
+1. Tóm Tắt Công Việc
+2. Khảo Sát & Cơ Sở Lựa Chọn
+3. Chi Tiết Thay Đổi
+4. Kết Quả Kiểm Chứng
+5. Vấn Đề Phát Hiện — Cần Người Dùng Quyết
+
+---
+
+# 1. Tóm Tắt Công Việc
+- **Mục tiêu:** Khảo sát các MCP server cho Aseprite hiện có, chọn ra bản uy tín/chất lượng nhất,
+  cài đặt và kết nối thành công.
+- **Thời gian hoàn thành:** 2026-08-18
+- **Kết quả:** Đã kết nối thành công. Server cung cấp 116 tools, kiểm chứng end-to-end đạt.
+
+---
+
+# 2. Khảo Sát & Cơ Sở Lựa Chọn
+
+Đã đối chiếu 10 repo qua GitHub API (số liệu thật, không dựa vào mô tả trên blog/marketplace):
+
+| Repo                       | Stars | Ngôn ngữ   | Commit cuối | License |
+| :------------------------- | ----: | :--------- | :---------- | :------ |
+| diivi/aseprite-mcp         |   422 | Python     | 2026-07-28  | MIT     |
+| willibrandon/pixel-mcp     |   123 | Go         | 2025-10-18  | MIT     |
+| ext-sakamoro/AsepriteMCP   |    23 | Python     | 2025-06-21  | MIT     |
+| rkdfx/aseprite-mcp         |    10 | Python     | 2026-04-17  | MIT     |
+| Dizzd/aseprite_mcp         |     6 | Rust       | 2026-03-16  | none    |
+| ayigityol/aseprite-mcp     |     6 | JavaScript | 2026-03-07  | MIT     |
+| 4 repo còn lại             |     0 | TS/Python  | bỏ hoang    | —       |
+
+**Chọn `diivi/aseprite-mcp`.** Lý do: gấp 3.4x runner-up về mức phổ biến; là repo duy nhất còn được
+maintain tích cực (commit cách thời điểm khảo sát 3 tuần, 6 contributor thực); license MIT rõ ràng;
+dependency sạch (`httpx`, `mcp[cli]`, `pillow` — đều là package chính thống).
+
+**Lưu ý về độ tin cậy của nguồn:** một kết quả tìm kiếm khẳng định `pixel-mcp` có 245 sao, nhưng
+GitHub API trả về 123. Đã lấy số của API làm chuẩn. Bài học: không dùng số liệu trên trang tổng hợp
+làm căn cứ quyết định.
+
+**Phương án trả phí đã cân nhắc và loại:** "Aseprite MCP Pro" (y1uda, itch.io, $10, 121 tools) —
+mã nguồn đóng, không kiểm tra được, không có cơ sở cộng đồng để đánh giá.
+
+---
+
+# 3. Chi Tiết Thay Đổi
+
+## 3.1. Tệp đã tạo
+- `vendor/aseprite-mcp/` — clone `diivi/aseprite-mcp` (depth 1).
+- `vendor/aseprite-mcp/.env` — khai báo `ASEPRITE_PATH`.
+- `mcp-client-config.example.json` (gốc dự án) — cấu hình MCP mẫu cho client khác. Ban đầu đặt tên
+  `.mcp.json` nhưng đã đổi tên: Claude Code tự nạp `.mcp.json` thành server scope `project`, trùng
+  với entry scope `local` và sinh cảnh báo "defined in multiple scopes".
+- Đăng ký Claude Code ở scope `local` bằng `claude mcp add` — ghi vào `C:\Users\Admin\.claude.json`.
+  Cách này bỏ được bước approve thủ công mà `.mcp.json` project-scoped bắt buộc phải qua.
+
+## 3.2. Tệp tài liệu đã cập nhật
+- `Docs/SourceOfTruth/overview.txt`:
+  - Kết luận đã kiểm chứng về cơ chế điều khiển Aseprite (CLI + Lua).
+  - Nêu câu hỏi hướng đi dự án — tự xây hay dùng server có sẵn.
+  - Bổ sung rủi ro về bản cài Aseprite hiện tại.
+  - Cập nhật trạng thái + chi tiết hạ tầng MCP đã cài.
+
+  *Lưu ý:* file này sau đó được cấu trúc lại trong cùng ngày khi người dùng đính chính định nghĩa
+  dự án, nên số hiệu mục ở trên không còn khớp. Tra theo tiêu đề mục thay vì theo số.
+
+## 3.3. Kiến thức kỹ thuật thu được
+- Cơ chế điều khiển Aseprite của server: sinh file `.lua` tạm → gọi
+  `aseprite --batch --script <file>` → xoá file tạm. Xem `aseprite_mcp/core/commands.py`.
+- Chất lượng code upstream tốt: có escape chuỗi Lua và chặn path traversal
+  (`commands.py` — hàm `lua_escape` và `reject_traversal`).
+- Số tool thực tế là **116**, không phải 104 như README ghi.
+
+---
+
+# 4. Kết Quả Kiểm Chứng
+
+## 4.1. Smoke test end-to-end (ĐẠT)
+Tạo canvas 32x32 → thêm layer "art" → vẽ 3 pixel → export PNG. Sau đó **đọc lại file PNG bằng
+Pillow để verify độc lập**, không chỉ tin vào thông báo thành công của tool:
+- `pixel(5,5) = (255,0,0,255)` — đỏ, đúng.
+- `pixel(6,5) = (0,255,0,255)` — lục, đúng.
+- `pixel(7,5) = (0,0,255,255)` — lam, đúng.
+- `pixel(0,0) = (0,0,0,0)` — nền trong suốt, đúng.
+
+## 4.2. MCP handshake qua stdio (ĐẠT)
+Dò bằng JSON-RPC thô: `initialize` trả về `serverInfo={name:"aseprite", version:"1.6.0"}`,
+protocol `2024-11-05`; `tools/list` trả về **116 tools**.
+
+## 4.3. Ghi chú về một lần test thất bại
+Lần thử đầu dùng Python MCP client SDK bị treo quá 180s. **Đây là lỗi của script test, không phải
+lỗi server** — đã chứng minh bằng cách dò JSON-RPC thô thành công ngay sau đó. Ghi lại để phiên sau
+không chẩn đoán nhầm là server hỏng.
+
+## 4.4. Trạng thái đăng ký
+`claude mcp list` báo server `aseprite` ở trạng thái **"Pending approval"**. Đây là hành vi đúng của
+Claude Code với server project-scoped, không phải lỗi. Người dùng phải tự chạy `claude` và duyệt.
+
+---
+
+# 5. Vấn Đề Phát Hiện — Cần Người Dùng Quyết
+
+## 5.1. Bản Aseprite đang dùng là bản bẻ khoá
+Đường dẫn: `C:\Users\Admin\Downloads\Aseprite.v1.3.17.2_LinkNeverDie.Com\Aseprite.exe`, đi kèm
+Steam emulator. Hai hệ quả: (1) nằm trong `Downloads/` nên đường dẫn chắc chắn sẽ gãy khi thư mục
+bị dọn; (2) rủi ro pháp lý khi dùng sản xuất asset cho game thương mại.
+Khuyến nghị: mua bản quyền (~$19.99) và cài vào đường dẫn cố định. Chi tiết ở mục 6 của
+`overview.txt`.
+
+## 5.2. Mâu thuẫn định hướng dự án — ĐÃ GIẢI QUYẾT cùng ngày
+Dự án được khởi tạo với định nghĩa "tự xây MCP server", nhưng yêu cầu lần này dẫn tới việc cài một
+server có sẵn đã bao phủ gần hết mục tiêu.
+
+**Kết luận:** người dùng đính chính ngay trong ngày — định nghĩa "tự xây" là do AI diễn giải sai ở
+phiên `/init`. Bản chất dự án là **dùng MCP server có sẵn**, không tự xây. Đã chốt phương án A.
+Xem `Docs/Decisions/2026-08-18-dung-mcp-server-co-san.txt`.
+
+## 5.3. Đề xuất nhỏ chưa thực hiện (chờ duyệt, không tự làm)
+Nếu sau này `git init` cho dự án, nên thêm `vendor/` và `.env` vào `.gitignore`.

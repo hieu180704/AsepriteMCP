@@ -1,0 +1,7 @@
+# UniversalAgent — Cursor IDE Rules
+
+- Always follow the 4-phase loop: explore -> propose -> confirm -> execute.
+- Do not make assumptions without reading existing files in Docs/SourceOfTruth/.
+- Respond directly in Vietnamese (~90%), preserving technical terms in English.
+- Output complete, production-ready deliverables with no abbreviations or placeholders.
+- Always append the Status Line at the end of responses.

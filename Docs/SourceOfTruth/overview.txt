@@ -1,0 +1,204 @@
+TỔNG QUAN DỰ ÁN — AsepriteMCP (Source of Truth)
+
+# Mục lục
+1. Mục Tiêu & Định Nghĩa Cốt Lõi
+2. Phạm Vi (In-scope / Out-of-scope)
+3. Bối Cảnh Sử Dụng & Người Dùng
+4. Kiến Trúc Thực Tế
+5. Điểm Mở — Cần Quyết Định
+6. Quy Chuẩn & Ràng Buộc Nền Tảng
+7. Trạng Thái Hiện Tại & Bước Kế Tiếp
+
+Ghi chú đọc tài liệu:
+  [GT]  = Ground Truth — do người dùng xác nhận trực tiếp, không được sửa khi chưa hỏi.
+  [INF] = Inference — suy luận/đề xuất của AI, cần kiểm chứng trước khi coi là chân lý.
+
+---
+
+# 1. Mục Tiêu & Định Nghĩa Cốt Lõi
+
+- **Tên dự án:** AsepriteMCP
+- **Loại:** Dự án **ứng dụng** — dùng MCP để AI làm việc được qua Aseprite. [GT]
+
+- **ĐỊNH NGHĨA QUAN TRỌNG NHẤT — KHÔNG tự xây MCP server:** [GT — người dùng xác nhận 2026-08-18]
+  AsepriteMCP là dự án **sử dụng** một MCP server có sẵn để AI thao tác với Aseprite, KHÔNG phải
+  dự án viết ra một MCP server mới. Bản `/init` đầu tiên đã diễn giải sai điểm này và đã được sửa.
+  Mọi đề xuất kiểu "ta nên tự viết server bằng ngôn ngữ X" đều đi ngược định nghĩa dự án — đừng đề
+  xuất lại trừ khi người dùng chủ động đổi ý.
+
+- **Mục đích tồn tại:** Cho phép AI thao tác trực tiếp lên file pixel art của Aseprite thay vì chỉ
+  mô tả bằng lời — biến Aseprite thành một công cụ mà AI gọi được. [GT]
+
+- **Ràng buộc — Model-agnostic:** Thiết lập KHÔNG dành riêng cho Claude. Bất kỳ AI model hay MCP
+  client nào cũng phải dùng được: Claude Code, Claude Desktop, Cursor, Cline, Continue,
+  ChatGPT/OpenAI, Gemini và các client MCP tương lai. [GT]
+  → Hệ quả: server được chọn phải giao tiếp bằng MCP tiêu chuẩn; cấu hình giữ ở dạng `.mcp.json`
+    phổ thông để client nào cũng copy sang được; không dùng tính năng riêng của một client. [INF]
+
+- **Ba mục tiêu cốt lõi (đầu ra kỳ vọng):** [GT]
+  1. **AI tự tạo pixel art** — vẽ, sửa, quản lý layer/frame, animate sprite qua tool calls.
+  2. **Tự động hoá export asset** — batch export sprite sheet, atlas, JSON metadata theo
+     convention cố định.
+  3. **Dùng nội bộ cho game Unity** — phục vụ workflow làm game Unity của chính người dùng.
+
+- **Không nhắm public/open-source.** Người dùng không chọn mục tiêu "Open-source / chia sẻ". [GT]
+
+---
+
+# 2. Phạm Vi (In-scope / Out-of-scope)
+
+## 2.1. In-scope
+- Chọn, cài đặt, cấu hình và vận hành MCP server cho Aseprite. [GT]
+- Thông qua server đó: tạo/chỉnh sửa file `.aseprite`, thao tác layer/frame/cel/palette/tag,
+  vẽ pixel và hình cơ bản, fill, chọn vùng, áp palette. [GT]
+- Export: sprite sheet, atlas, PNG rời, JSON metadata mô tả frame/tag. [GT]
+- Batch processing nhiều file theo convention. [GT]
+- Viết lớp phụ trợ **bên ngoài server** nếu cần (script export, quy ước đặt tên, glue code đưa
+  asset vào Unity). Đây không phải "tự xây server" nên không mâu thuẫn định nghĩa ở mục 1. [INF]
+
+## 2.2. Out-of-scope
+- **Tự viết một MCP server mới cho Aseprite.** Đã loại dứt khoát. [GT]
+- Fork và tự maintain server upstream như một sản phẩm riêng. [INF]
+- Phát hành công khai bất cứ thứ gì lên npm/PyPI/GitHub cho cộng đồng. [GT]
+- Tự sinh art bằng model diffusion/AI image generation — dự án điều khiển Aseprite, không thay thế
+  nó bằng generative image model. [INF]
+
+---
+
+# 3. Bối Cảnh Sử Dụng & Người Dùng
+
+- **Người dùng chính:** Developer Unity (chủ dự án), làm game indie. [GT]
+- **Luồng sử dụng kỳ vọng:** [INF]
+  Dev mô tả yêu cầu bằng ngôn ngữ tự nhiên trong một AI client bất kỳ
+  → client gọi tool của MCP server
+  → server tác động lên file Aseprite
+  → asset được export ra thư mục Unity project theo convention
+  → Unity import và dùng được ngay, không cần bước convert thủ công.
+
+- **Điểm nhấn về đầu ra hướng Unity:** [INF]
+  Format export nên ưu tiên thứ Unity đọc được trực tiếp (sprite sheet PNG + JSON metadata mô tả
+  vị trí frame, pivot, animation tag) thay vì format trung gian phải xử lý thêm.
+  Convention đặt tên file và cấu trúc thư mục cần được chốt sớm vì nó ràng buộc cả hai đầu.
+
+---
+
+# 4. Kiến Trúc Thực Tế
+
+Đây là kiến trúc đang chạy thật trên máy, không phải đề xuất. [GT — đã kiểm chứng 2026-08-18]
+
+```text
+[AI Client bất kỳ]                 (Claude Code / Cursor / ChatGPT / Cline ...)
+        │  MCP protocol qua stdio
+        ▼
+[diivi/aseprite-mcp]               vendor/aseprite-mcp — Python 3.13 chạy bằng uv
+        │  116 tools
+        │  sinh file .lua tạm → gọi aseprite --batch --script <file> → xoá file tạm
+        ▼
+[Aseprite 1.3.17.2]                đường dẫn khai báo qua ASEPRITE_PATH
+        │
+        ▼
+[File .aseprite / PNG / JSON]  ──►  [Unity project]   ← khoảng trống, xem mục 5.1
+```
+
+Phần dự án có thể cần tự làm nằm ở mũi tên cuối cùng: đưa asset từ đầu ra của server vào Unity
+theo đúng convention. Upstream không giải quyết thay được vì convention là thứ riêng của mỗi dự án.
+
+---
+
+# 5. Điểm Mở — Cần Quyết Định
+
+## 5.1. Convention export cho Unity — CHƯA BÀN, ĐÂY LÀ ĐIỂM MỞ CHÍNH
+Cần chốt: cấu trúc thư mục đích trong Unity project, quy tắc đặt tên file, format JSON metadata,
+quy ước pivot, và cách ánh xạ animation tag của Aseprite sang Unity.
+Đây là hạng mục duy nhất còn lại có khả năng cần viết code. [INF]
+
+## 5.2. Xử lý bản cài Aseprite — CẦN QUYẾT
+Xem chi tiết rủi ro ở mục 6. Cần quyết: mua bản quyền và cài vào đường dẫn cố định, hay giữ
+nguyên hiện trạng và chấp nhận rủi ro.
+
+---
+
+## Các câu hỏi ĐÃ ĐÓNG (giữ lại để không hỏi lại)
+
+**Đ1. Tự xây hay dùng server có sẵn? → CHỐT: dùng có sẵn.** [GT, 2026-08-18]
+Người dùng xác nhận dự án không phải tự xây. Decision Memo:
+`Docs/Decisions/2026-08-18-dung-mcp-server-co-san.txt`.
+
+**Đ2. Techstack & runtime tự xây server? → KHÔNG CÒN Ý NGHĨA.**
+Câu hỏi này chỉ tồn tại khi còn định tự xây. Runtime thực tế là Python 3.13 + uv, do server
+upstream quy định, không phải lựa chọn của dự án.
+
+**Đ3. Cơ chế điều khiển Aseprite? → ĐÃ ĐƯỢC UPSTREAM QUYẾT: CLI + Lua script.** [GT — đã kiểm chứng]
+Kết luận thực nghiệm ngày 2026-08-18:
+- CLI thuần (các flag dựng sẵn) KHÔNG vẽ pixel tuỳ ý được.
+- CLI + `--script` chạy file Lua thì vẽ được đầy đủ. Đã chạy thật: tạo canvas 32x32 → thêm layer →
+  vẽ 3 pixel → export PNG → đọc lại PNG bằng Pillow, xác nhận đúng toạ độ, đúng màu, nền trong suốt.
+Đây là cơ chế server upstream đang dùng, xem `vendor/aseprite-mcp/aseprite_mcp/core/commands.py`.
+
+**Đ4. Chọn server nào? → CHỐT: `diivi/aseprite-mcp`.** [GT, 2026-08-18]
+So sánh 10 repo qua GitHub API. Chi tiết số liệu và lý do ở
+`Docs/Done/2026-08-18-ket-noi-aseprite-qua-mcp.txt`.
+
+---
+
+# 6. Quy Chuẩn & Ràng Buộc Nền Tảng
+
+- **Quy trình 4 pha bắt buộc:** `explore -> propose -> confirm -> execute`. Dừng ở cuối pha
+  Propose để chờ duyệt, không tự nhảy pha.
+- **Không đề xuất tự xây server:** ràng buộc cứng, xem mục 1.
+- **Model-agnostic là ràng buộc cứng:** cấu hình và quy ước không được gắn cứng vào một AI client.
+- **Living Docs:** tài liệu cập nhật song song với thực thi; hoàn tất đầu việc thì ghi worklog
+  fragment vào `Docs/Done/YYYY-MM-DD-task-name.txt`.
+- **Định dạng tài liệu:** ưu tiên `.txt`, mọi file có mục lục ở đầu, phân tách phần bằng `---`.
+- **Ngôn ngữ:** Tiếng Việt ~90%, giữ nguyên thuật ngữ kỹ thuật tiếng Anh.
+- **Nền tảng phát triển:** Windows 11. Đường dẫn, script và cách gọi tiến trình phải hoạt động
+  đúng trên Windows. [GT]
+
+- **Cập nhật server upstream:** `vendor/aseprite-mcp` là clone `--depth 1`, không phải submodule.
+  Muốn cập nhật phải `git pull` thủ công trong thư mục đó. Sau khi pull, chạy lại `uv sync` và
+  smoke test trước khi tin là còn hoạt động. [INF]
+
+- **RỦI RO CẦN XỬ LÝ — bản cài Aseprite hiện tại:** [GT — quan sát trực tiếp trên máy]
+  Bản Aseprite đang dùng nằm ở `C:\Users\Admin\Downloads\Aseprite.v1.3.17.2_LinkNeverDie.Com\`,
+  là bản bẻ khoá đi kèm Steam emulator (`SteamCLientLoader64.dll`, `steam_appid.txt`, GSE loader).
+  Hai hệ quả thật, không phải lý thuyết:
+  1. *Kỹ thuật:* nằm trong `Downloads/` — thư mục hay bị dọn dẹp và dễ bị di chuyển. Khi đường dẫn
+     đổi, `ASEPRITE_PATH` gãy và toàn bộ MCP server ngừng hoạt động. Đây là điểm gãy chắc chắn sẽ
+     xảy ra chứ không phải "có thể".
+  2. *Pháp lý:* dự án nhắm sản xuất asset cho game Unity. Dùng công cụ bẻ khoá để sản xuất asset
+     thương mại là rủi ro thật khi phát hành hoặc khi bị publisher/nền tảng audit.
+  Khuyến nghị: mua bản quyền Aseprite (~$19.99 trên Steam hoặc itch.io) và cài vào đường dẫn cố
+  định, rồi trỏ `ASEPRITE_PATH` sang đó. Chi phí này nhỏ so với rủi ro của một dự án thương mại.
+
+---
+
+# 7. Trạng Thái Hiện Tại & Bước Kế Tiếp
+
+## 7.1. Trạng thái (tính đến 2026-08-18)
+- Định nghĩa dự án đã được đính chính: **dùng MCP server có sẵn, không tự xây.**
+- Hạ tầng MCP đã cài và kiểm chứng đạt. Toàn tuyến AI → MCP → Aseprite → file PNG chạy thật.
+- Dự án **không có và không cần** source code server của riêng mình.
+- Còn 2 điểm mở: convention export Unity (5.1) và xử lý bản cài Aseprite (5.2).
+
+## 7.2. Hạ tầng MCP đã cài đặt (2026-08-18) [GT]
+- **Server:** `diivi/aseprite-mcp` — clone tại `vendor/aseprite-mcp` (MIT, 422 sao, 6 contributor,
+  commit gần nhất 2026-07-28). Được chọn sau khi so sánh 10 repo qua GitHub API.
+- **Runtime:** Python 3.13 qua `uv`. Dependency: `httpx`, `mcp[cli]`, `pillow`.
+- **Cơ chế:** CLI + Lua script tạm.
+- **Số tool thực tế:** 116 (README upstream ghi 104 — repo đã thêm từ lúc viết README).
+- **Đăng ký với Claude Code:** scope `local`, lưu trong `C:\Users\Admin\.claude.json`. Trạng thái
+  `claude mcp list`: **✔ Connected**.
+- **Cấu hình cho client khác:** `mcp-client-config.example.json` ở gốc dự án — file mẫu để copy
+  sang Cursor/Cline/ChatGPT hoặc bất kỳ MCP client nào. Đây là cách giữ ràng buộc model-agnostic.
+  *Lưu ý:* file này cố ý KHÔNG đặt tên `.mcp.json`. Nếu đặt tên đó, Claude Code sẽ nạp nó thành
+  server ở scope `project`, trùng với entry `local` đang dùng và sinh cảnh báo "defined in multiple
+  scopes". Muốn đổi đường dẫn thì sửa cả file mẫu lẫn entry local (`claude mcp remove/add`).
+- **Đường dẫn Aseprite:** khai báo trong `vendor/aseprite-mcp/.env` qua biến `ASEPRITE_PATH`.
+
+## 7.3. Bước kế tiếp đề xuất [INF]
+1. **Approve MCP server trong Claude Code** — chạy `claude`, duyệt server `aseprite`. Bắt buộc
+   thao tác thủ công, đây là cơ chế bảo mật của Claude Code với server project-scoped.
+2. **Dùng thử thực tế** — cho AI tạo vài asset thật để biết 116 tools còn thiếu gì so với nhu cầu.
+   Làm việc này trước khi bàn convention sẽ có dữ liệu thật để quyết, thay vì bàn trên giấy.
+3. **Chốt convention export cho Unity (5.1).**
+4. **Xử lý vấn đề đường dẫn/bản quyền Aseprite (5.2).**

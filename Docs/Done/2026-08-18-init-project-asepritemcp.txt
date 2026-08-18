@@ -1,0 +1,66 @@
+WORKLOG FRAGMENT: Khởi Tạo Bối Cảnh Dự Án AsepriteMCP (/init)
+
+# Mục lục
+1. Tóm Tắt Công Việc
+2. Chi Tiết Thay Đổi
+3. Kết Quả Kiểm Chứng
+4. Lưu Ý Cho Người Tiếp Quản
+
+---
+
+# 1. Tóm Tắt Công Việc
+- **Mục tiêu:** Chạy quy trình `/init` — phỏng vấn bối cảnh và chuyển workspace từ starter kit
+  rỗng (toàn placeholder `[TÊN DỰ ÁN]`) thành dự án AsepriteMCP có tài liệu gốc đầy đủ.
+- **Thời gian hoàn thành:** 2026-08-18
+
+---
+
+# 2. Chi Tiết Thay Đổi
+
+## 2.1. Bối cảnh thu thập được từ phỏng vấn (Ground Truth)
+- **Loại dự án:** MCP server cho Aseprite, **model-agnostic** — dùng được với bất kỳ AI model /
+  MCP client nào, không riêng Claude.
+- **Ba mục tiêu cốt lõi:** AI tự tạo pixel art; tự động hoá export asset; dùng nội bộ cho game Unity.
+- **Không chọn** mục tiêu open-source/chia sẻ công khai.
+- **Techstack & runtime:** CHƯA QUYẾT.
+- **Cơ chế điều khiển Aseprite:** CHƯA QUYẾT.
+
+## 2.2. Tệp đã tạo/chỉnh sửa
+- `AGENTS.md` — điền tên, mục tiêu, bản đồ ngữ cảnh; bổ sung mục Quy Tắc Đặc Thù ghi rõ ràng buộc
+  model-agnostic và hai điểm còn mở.
+- `CLAUDE.md` — điền mô tả dự án + cảnh báo hai quyết định chưa chốt.
+- `CHATGPT.md` — tương tự `CLAUDE.md`.
+- `Docs/SourceOfTruth/overview.txt` — **tạo mới.** Tài liệu gốc 7 mục: mục tiêu, phạm vi, bối cảnh
+  sử dụng, kiến trúc dự kiến, điểm mở cần quyết định, quy chuẩn, bước kế tiếp.
+- `Docs/Done/2026-08-18-init-project-asepritemcp.txt` — worklog fragment này.
+
+## 2.3. Tệp CỐ Ý không đụng tới
+- `AGENTS_TEMPLATE.md`, `CLAUDE_TEMPLATE.md`, `CHATGPT_TEMPLATE.md` — giữ nguyên placeholder để
+  còn tái sử dụng cho dự án khác.
+- `.cursorrules`, `.openai/system-prompt.txt` — chỉ chứa quy tắc vận hành chung của UniversalAgent,
+  không có placeholder tên dự án nên không cần sửa.
+- `Docs/SourceOfTruth/spec-template.txt` và các file `*-template.txt` khác — giữ làm mẫu.
+
+## 2.4. Quyết định quan trọng đi kèm
+- Đánh dấu tường minh trong `overview.txt` đâu là **[GT] Ground Truth** (người dùng xác nhận) và
+  đâu là **[INF] Inference** (AI suy luận, cần kiểm chứng) — tránh biến suy đoán thành chân lý ở
+  các phiên sau.
+- **KHÔNG** tự tạo Decision Memo cho hai hạng mục còn mở, vì chưa có quyết định nào được ra.
+  Các phương án và trade-off được để ở mục 5 của `overview.txt` làm nguyên liệu cho phiên quyết định.
+
+---
+
+# 3. Kết Quả Kiểm Chứng
+- Đã chạy `node scripts/sync-agents.js`: đồng bộ rules/recipes/hooks/skills đa nền tảng thành công.
+- Đã đối chiếu: không còn placeholder `[TÊN DỰ ÁN]` trong `AGENTS.md`, `CLAUDE.md`, `CHATGPT.md`.
+- Trạng thái nghiệm thu: PASS.
+
+---
+
+# 4. Lưu Ý Cho Người Tiếp Quản
+- **Việc chặn tiếp theo:** cần đọc tài liệu Aseprite CLI + Lua Scripting API để xác nhận liệu CLI
+  thuần có vẽ pixel tuỳ ý được không. Nghi vấn hiện tại (chưa kiểm chứng): CLI chỉ export/convert
+  được, nếu đúng thì phương án "chỉ dùng CLI dựng sẵn" không đáp ứng nổi mục tiêu cốt lõi số 1.
+- **Thứ tự quyết định có chủ đích:** chốt cơ chế điều khiển Aseprite TRƯỚC, techstack SAU — vì cơ
+  chế điều khiển ràng buộc lựa chọn ngôn ngữ nhiều hơn chiều ngược lại.
+- Dự án vẫn **chưa có dòng code nào**; chưa có `src/` hay manifest package.

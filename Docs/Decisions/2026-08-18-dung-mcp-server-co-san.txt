@@ -1,0 +1,67 @@
+QUYẾT ĐỊNH: Dùng MCP Server Có Sẵn, Không Tự Xây
+
+# Mục lục
+1. Bối Cảnh & Vấn Đề
+2. Các Phương Án Đã Cân Nhắc
+3. Quyết Định Đã Chốt & Lý Do
+4. Hệ Quả Tới Tài Liệu & Công Việc
+
+---
+
+# 1. Bối Cảnh & Vấn Đề
+- **Ngày ghi nhận:** 2026-08-18
+- **Vấn đề:** Phiên `/init` đã định nghĩa AsepriteMCP là "MCP server do người dùng tự xây". Định
+  nghĩa này SAI. Bản chất dự án là **dùng MCP để AI làm việc qua Aseprite** — một dự án ứng dụng,
+  không phải dự án viết server.
+- **Nguồn sai sót:** AI diễn giải sai câu trả lời phỏng vấn của người dùng ở phiên `/init`.
+  Người dùng đính chính trực tiếp: *"AsepriteMCP là project dùng MCP để AI làm việc qua aseprite
+  ko phải tự xây, nhầm rồi"*.
+
+---
+
+# 2. Các Phương Án Đã Cân Nhắc
+
+- **Phương án A — Dùng nguyên server có sẵn.**
+  - Ưu: không phải viết code; 116 tools đã bao phủ gần hết mục tiêu 1 và 2; có người khác maintain.
+  - Nhược: phụ thuộc repo ngoài, không kiểm soát roadmap upstream.
+
+- **Phương án B — Dùng + tuỳ biến.**
+  - Ưu: giữ server làm nền, bổ sung lớp phụ trợ riêng cho convention export Unity.
+  - Nhược: phát sinh phần phải tự maintain.
+
+- **Phương án C — Tự xây từ đầu.**
+  - Ưu: kiểm soát hoàn toàn.
+  - Nhược: phải làm lại 116 tools mà người khác đã làm và đang maintain tích cực.
+
+---
+
+# 3. Quyết Định Đã Chốt & Lý Do
+
+- **Quyết định: Chọn phương án A — dùng server có sẵn `diivi/aseprite-mcp`. Phương án C bị loại
+  dứt khoát.**
+
+- **Rationale:**
+  - Người dùng xác nhận trực tiếp bản chất dự án là "dùng", không phải "xây". Đây là Ground Truth,
+    không phải suy luận kỹ thuật, nên không có trade-off nào để cân nhắc lại.
+  - Server đã được cài, chạy thật và kiểm chứng đạt trên chính máy này trước khi quyết định, nên
+    lựa chọn dựa trên bằng chứng vận hành chứ không dựa trên kỳ vọng.
+
+- **Đánh đổi chấp nhận:** phụ thuộc vào repo upstream. Rủi ro này được chấp nhận vì repo có license
+  MIT (fork được nếu upstream ngừng phát triển) và đang được maintain tích cực (422 sao,
+  6 contributor, commit gần nhất 2026-07-28).
+
+- **Ranh giới của quyết định:** "không tự xây server" KHÔNG có nghĩa là "không viết dòng code nào".
+  Việc viết lớp phụ trợ **bên ngoài** server — script export, quy ước đặt tên, glue code đưa asset
+  vào Unity — vẫn nằm trong phạm vi và không mâu thuẫn quyết định này. Điều bị loại là viết một
+  MCP server mới cho Aseprite.
+
+---
+
+# 4. Hệ Quả Tới Tài Liệu & Công Việc
+
+- Câu hỏi "techstack & runtime để tự xây server" **không còn ý nghĩa**. Runtime thực tế là
+  Python 3.13 + uv, do upstream quy định, không phải lựa chọn của dự án.
+- Câu hỏi "cơ chế điều khiển Aseprite" **đã được upstream quyết**: CLI + Lua script tạm.
+- Điểm mở còn lại thu hẹp về: convention export cho Unity, và xử lý bản cài Aseprite.
+- Tài liệu đã sửa theo quyết định này: `Docs/SourceOfTruth/overview.txt`, `AGENTS.md`, `CLAUDE.md`,
+  `CHATGPT.md`.

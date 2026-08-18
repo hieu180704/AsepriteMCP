@@ -1,0 +1,30 @@
+# WORKLOG FRAGMENT: Thêm Kỹ Năng /init & Trình Cài Đặt 1-Click setup.bat
+
+# Mục lục
+1. [Tóm Tắt Công Việc](#1-tóm-tắt-công-việc)
+2. [Chi Tiết Thay Đổi](#2-chi-tiết-thay-đổi)
+3. [Kết Quả Kiểm Chứng](#3-kết-quả-kiểm-chứng)
+
+---
+
+# 1. Tóm Tắt Công Việc
+- **Mục tiêu:** Bổ sung tính năng onboarding tự động qua Meta-Skill `/init` và hỗ trợ cài đặt 1-Click / Kéo & Thả qua `setup.bat`.
+- **Thời gian hoàn thành:** 2026-08-17
+
+---
+
+# 2. Chi Tiết Thay Đổi
+- **Skill Onboarding `/init`:**
+  - Tạo `.agents/skills/init/SKILL.md` định nghĩa quy trình phỏng vấn 3 câu cốt lõi và tự động sinh toàn bộ tài liệu Markdown & SourceOfTruth.
+  - Đồng bộ lệnh sang `.claude/commands/init.md`.
+- **Trình cài đặt 1-Click GUI:**
+  - Tạo file `setup.bat` hỗ trợ kéo & thả thư mục dự án hoặc click đúp chuột.
+  - Nâng cấp `install.ps1` & `install.sh` hỗ trợ tương tác console và tự động copy `CLAUDE.md`, `CHATGPT.md` từ template.
+- **Tài liệu & Template:**
+  - Bổ sung hướng dẫn `/init` và `setup.bat` vào `README.md`, `AGENTS.md`, `CLAUDE.md`, `AGENTS_TEMPLATE.md`, `CLAUDE_TEMPLATE.md`, `CHATGPT_TEMPLATE.md`.
+
+---
+
+# 3. Kết Quả Kiểm Chứng
+- Đã chạy kiểm thử tự động với `setup.bat` và `install.ps1`: Sao chép và khởi tạo đầy đủ thư mục, templates, scripts thành công 100%.
+- Đã chạy `node scripts/sync-agents.js`: Đồng bộ rules/recipes/hooks/skills đa nền tảng không có lỗi.

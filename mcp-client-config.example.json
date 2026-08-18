@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "aseprite": {
+      "type": "stdio",
+      "command": "C:\\Users\\Admin\\.local\\bin\\uv.exe",
+      "args": [
+        "--directory",
+        "D:\\Project\\AsepriteMCP\\vendor\\aseprite-mcp",
+        "run",
+        "-m",
+        "aseprite_mcp"
+      ],
+      "env": {}
+    }
+  }
+}
