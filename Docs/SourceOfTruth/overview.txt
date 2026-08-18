@@ -116,20 +116,55 @@ quy ước pivot, và cách ánh xạ animation tag của Aseprite sang Unity.
 Xem chi tiết rủi ro ở mục 6. Cần quyết: mua bản quyền và cài vào đường dẫn cố định, hay giữ
 nguyên hiện trạng và chấp nhận rủi ro.
 
-## 5.3. Hooks không chạy trên Claude Code — ĐÃ CHỐT SỬA, CHƯA THỰC HIỆN
+## 5.3. Hooks không chạy trên Claude Code — ĐÃ XỬ LÝ 2026-08-18
 [GT — kiểm chứng 2026-08-18 bằng schema chính thức tại https://code.claude.com/docs/en/hooks]
-Ba lỗi độc lập, mỗi lỗi đủ để vô hiệu hoá toàn bộ hooks:
+Năm lỗi độc lập, mỗi lỗi đủ để vô hiệu hoá hooks (hoặc một hook). Cả năm đã sửa xong:
   1. Cấu trúc sai: `.claude/settings.json` dùng `{matcher, command}`, schema đúng là
-     `{matcher, hooks:[{type:"command", command}]}` — thiếu mảng lồng bên trong.
+     `{matcher, hooks:[{type:"command", command}]}` — thiếu mảng lồng bên trong. → ĐÃ SỬA.
   2. Matcher sai: `"tool == 'Write' || tool == 'Edit'"` chứa ký tự đặc biệt nên bị Claude Code
-     hiểu là regex và không khớp tool nào. Đúng phải là `"Write|Edit"`.
+     hiểu là regex và không khớp tool nào. → ĐÃ SỬA thành `"Write|Edit|MultiEdit|NotebookEdit"`.
   3. Input sai: `safety-guard.js` và `read-guard.js` đọc `process.argv[2]`, nhưng Claude Code
-     gửi dữ liệu qua **stdin dạng JSON**.
-Hệ quả thực tế: `safety-guard.js` luôn nhận chuỗi rỗng nên không pattern nào khớp — guard bảo vệ
-`.env` hiện là hình nộm, luôn trả SAFE.
-Lưu ý công bằng: format trong `.agents/hooks.json` (`tool == '...'`) có thể đúng với Antigravity.
-Vấn đề nằm ở chỗ tư duy đó được bê nguyên sang `.claude/settings.json` nơi schema khác hẳn.
-Người dùng đã chốt sửa (ưu tiên 1 của phiên kế tiếp).
+     gửi dữ liệu qua **stdin dạng JSON**. → ĐÃ SỬA, xem cách làm bên dưới.
+  4. Exit code sai (phát hiện thêm khi thực hiện): guard trả `process.exit(1)`, mà với Claude Code
+     exit 1 là *non-blocking error* — in cảnh báo rồi vẫn cho tool chạy tiếp. Muốn chặn thật phải
+     là **exit 2** (chặn tool + đẩy stderr về cho model đọc). → ĐÃ SỬA.
+Hệ quả trước khi sửa: `safety-guard.js` luôn nhận chuỗi rỗng nên không pattern nào khớp — guard bảo
+vệ `.env` là hình nộm, luôn trả SAFE. Kể cả khớp cũng không chặn được vì lỗi 4.
+
+**Cách sửa lỗi 3 — quyết định thiết kế [GT, người dùng chốt 2026-08-18]:** không sửa argv → stdin,
+vì như vậy chỉ đổi giả định sai này lấy giả định sai khác; dự án phải chạy trên *mọi* AI client
+(hiện Claude, sau có thể Antigravity, Cursor...) và mọi thiết bị. Giải pháp: module dùng chung
+`.agents/hooks/hook-io.js` tự dò input — ưu tiên stdin JSON, không có thì rơi về argv; parse được
+JSON thì chỉ duyệt nhánh tham số tool (`tool_input`/`arguments`/`params`/`input`), gom giá trị dưới
+key khớp `/path|file|filename|target|uri|url/i`. **Chỉ soi đường dẫn, không soi nội dung file** —
+nếu match cả payload thì một lệnh ghi tài liệu có nhắc chữ `.env` sẽ bị chặn oan.
+Kiểm chứng: 15 ca test qua CLI (stdin JSON an toàn/nhạy cảm, argv an toàn/nhạy cảm, payload phẳng
+kiểu client lạ, input rỗng, read-guard png/pdf/text, closeout-trigger lọc đúng `git commit` và im
+với lệnh khác) — đúng exit code cả 15. Ca đáng giá nhất: payload có `content` chứa chữ `.env` và
+`secrets` nhưng `file_path` sạch → vẫn SAFE, log ghi "kiểm 1 đường dẫn" chứng minh `transcript_path`
+trong metadata phiên cũng bị loại đúng thiết kế.
+`.agents/hooks.json` giữ nguyên: matcher `tool == '...'` vẫn hợp lệ phía Antigravity, script giờ ăn
+được cả hai giao thức.
+
+**Wiring đã kiểm chứng thực tế ngay trong phiên 2026-08-18 [GT]:**
+  - Lệnh `Write` lên một file `.env` → **bị chặn**, Claude Code trả về
+    `PreToolUse:Write hook error: [SAFETY VIOLATION] ...` và file không được tạo. Đây là bằng chứng
+    trực tiếp rằng cả schema, matcher, cách đọc input lẫn `exit(2)` đều đúng.
+  - Lệnh `git commit` → `closeout-trigger.js` bắn `[LIVING DOCS REMINDER]` vào ngữ cảnh model qua
+    `additionalContext`, và im lặng với các lệnh Bash khác.
+  - `read-guard.js` dùng chung đường ống đó nhưng thoát 0 nên không có tín hiệu nhìn thấy được
+    trong phiên; chỉ kiểm chứng được ở mức CLI.
+Đính chính một nhận định sai đã nêu lúc đang làm: Claude Code **có** nạp lại `.claude/settings.json`
+trong phiên, không phải chỉ chụp lúc khởi động như phỏng đoán ban đầu.
+**Lỗi 5 — `closeout-trigger.js` là file chết phía Claude (phát hiện và sửa cùng đợt).** Script được
+sync sang `.claude/hooks/` nhưng không đăng ký trong `settings.json`. Đã nối dây với matcher
+`"Bash"`. Vướng mắc kèm theo: matcher của Claude Code chỉ khớp **tên tool**, không soi được nội
+dung lệnh như matcher Antigravity (`command.includes('git commit')`), nên bộ lọc `git commit` phải
+chuyển vào trong script. Quy tắc chọn: input rỗng thì cứ nhắc (tin bộ lọc phía client cũ), chỉ im
+lặng khi đọc được input và biết chắc không phải `git commit`.
+Script cũng đổi cách in: client nói JSON thì trả `hookSpecificOutput.additionalContext` để nội dung
+nhắc vào được ngữ cảnh model — stdout text thuần với exit 0 chỉ hiện ở transcript, model không đọc
+được. Client cũ vẫn nhận text thuần như trước.
 
 ---
 
@@ -207,7 +242,9 @@ So sánh 10 repo qua GitHub API. Chi tiết số liệu và lý do ở
 - Hạ tầng MCP đã cài và kiểm chứng đạt. Toàn tuyến AI → MCP → Aseprite → file PNG chạy thật.
 - Dự án **không có và không cần** source code server của riêng mình.
 - **Đã có bộ recipes hướng dẫn AI thao tác Aseprite** (4 file, xem 7.4).
-- Còn 3 điểm mở: convention export Unity (5.1), bản cài Aseprite (5.2), hooks hỏng (5.3).
+- **Hooks đã sửa xong** (5.3), có thêm skill `/asset-qc` và rule nạp thường trực
+  `aseprite-protocol.md` (xem 7.5).
+- Còn 2 điểm mở: convention export Unity (5.1), bản cài Aseprite (5.2).
 
 ## 7.4. Bộ recipes thao tác Aseprite (2026-08-18) [GT]
 Nguồn tại `.agents/recipes/`, đã sync sang `.claude/recipes/`:
@@ -241,14 +278,15 @@ Ba file entry-point `AGENTS.md` / `CLAUDE.md` / `CHATGPT.md` đều đã trỏ t
 
 ## 7.3. Bước kế tiếp — ĐÃ CHỐT với người dùng ngày 2026-08-18 [GT]
 Thứ tự ưu tiên cho phiên kế tiếp:
-1. **Sửa hooks đang hỏng (5.3)** — làm trước tiên. Thêm hook mới lên nền hỏng là vô nghĩa.
-   Phạm vi: sửa schema `.claude/settings.json`, đổi 2 script sang đọc stdin JSON.
-2. **Tạo skill `/asset-qc`** — chạy trọn bộ verify trên một file `.aseprite`: `get_sprite_info`
+1. [x] **Sửa hooks đang hỏng (5.3)** — làm trước tiên. Thêm hook mới lên nền hỏng là vô nghĩa.
+   XONG 2026-08-18: sửa 4 lỗi, chi tiết ở 5.3. Wiring còn chờ phiên sau xác nhận.
+2. [x] **Tạo skill `/asset-qc`** — chạy trọn bộ verify trên một file `.aseprite`: `get_sprite_info`
    → `get_color_stats` → `validate_scene` → `audit_animation` → `compare_frames` các frame liền kề
    → export PNG → nhìn. Lý do ưu tiên cao: đây đúng là khâu model hay bỏ qua nhất, và là thứ bù
-   đắp cho việc server không trả ảnh về.
-3. **Tạo rule ngắn `.agents/rules/aseprite-protocol.md`** (~20 dòng) — 8 rule cứng dạng rút gọn,
+   đắp cho việc server không trả ảnh về. XONG 2026-08-18, xem 7.5.
+3. [x] **Tạo rule ngắn `.agents/rules/aseprite-protocol.md`** (~20 dòng) — 8 rule cứng dạng rút gọn,
    nạp thường trực mọi phiên, trỏ sang playbook cho chi tiết. Che trường hợp model quên đọc recipe.
+   XONG 2026-08-18 (22 dòng), xem 7.5.
 
 Đã cân nhắc và **loại**: hook inject playbook mỗi phiên (tốn token, mục 3 đạt cùng mục tiêu rẻ
 hơn); skill vẽ sprite tự động end-to-end (vẽ từ đầu là khâu AI yếu nhất, đóng thành một lệnh sẽ
@@ -260,3 +298,16 @@ Sau đó, theo thứ tự tự nhiên:
 5. **Chốt convention export cho Unity (5.1).**
 6. **Xử lý vấn đề đường dẫn/bản quyền Aseprite (5.2).** Sau bước này mới nên làm skill
    `/aseprite-doctor` — chờ đường dẫn ổn định rồi mới có cái để kiểm.
+
+## 7.5. Skill /asset-qc và rule aseprite-protocol (2026-08-18) [GT]
+- **`.agents/skills/asset-qc/SKILL.md`** — sync sinh ra `.claude/commands/asset-qc.md`. Chạy 6 bước
+  kiểm chứng trên một file `.aseprite`, kết bằng bảng PASS/WARN/FAIL kèm số liệu thật.
+  **Ngưỡng cảnh báo được trỏ sang mục 4.1 của playbook, cố ý không chép lại** — một ngưỡng chỉ sống
+  ở một chỗ, chép ra là hai nguồn lệch nhau. Sửa ngưỡng thì sửa ở playbook, skill tự theo.
+  Skill có xử lý sprite tĩnh 1 frame: bỏ `audit_animation` + `compare_frames` và bắt buộc nói rõ.
+- **`.agents/rules/aseprite-protocol.md`** — 22 dòng, sync sang `.claude/rules/`. Nạp thường trực,
+  chỉ chứa R1-R8 mỗi rule một câu + nguyên tắc kiểm chứng + ràng buộc không tự xây server.
+  Cố ý **không** có mục lục (quality-standards chỉ bắt buộc với doc >100 dòng) và cố ý không lặp
+  lại lý do — lý do nằm ở playbook. File này chỉ để chặn trường hợp model quên đọc recipe.
+- Tên tool và tham số trong skill đã đối chiếu signature thật: `analysis.py:132,229`,
+  `animation.py:150`, `quality.py:128,214`, `export.py:8`.
