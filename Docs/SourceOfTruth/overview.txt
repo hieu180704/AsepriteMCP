@@ -32,8 +32,14 @@ Ghi chú đọc tài liệu:
 - **Ràng buộc — Model-agnostic:** Thiết lập KHÔNG dành riêng cho Claude. Bất kỳ AI model hay MCP
   client nào cũng phải dùng được: Claude Code, Claude Desktop, Cursor, Cline, Continue,
   ChatGPT/OpenAI, Gemini và các client MCP tương lai. [GT]
-  → Hệ quả: server được chọn phải giao tiếp bằng MCP tiêu chuẩn; cấu hình giữ ở dạng `.mcp.json`
-    phổ thông để client nào cũng copy sang được; không dùng tính năng riêng của một client. [INF]
+  → Hệ quả: server được chọn phải giao tiếp bằng MCP tiêu chuẩn; cấu hình khai báo một lần ở
+    `mcp-servers.template.json` rồi sinh ra file đúng schema cho từng client bằng
+    `node scripts/setup-mcp.js`; không dùng tính năng riêng của một client. [INF]
+    Cập nhật 2026-08-18: trước đây dự định giữ một file `.mcp.json` chung cho mọi client, nhưng
+    mỗi client đọc một đường dẫn và một schema khác nhau (Claude `.mcp.json`, Cursor
+    `.cursor/mcp.json`, VS Code `.vscode/mcp.json` với khoá `servers`, Gemini `.gemini/settings.json`,
+    Codex `~/.codex/config.toml` dạng TOML và nằm ngoài repo) nên "copy sang được" là không đủ.
+    Chi tiết cơ chế mới xem `README.md` mục 1-2. [GT — kiểm chứng 2026-08-18]
 
 - **Ba mục tiêu cốt lõi (đầu ra kỳ vọng):** [GT]
   1. **AI tự tạo pixel art** — vẽ, sửa, quản lý layer/frame, animate sprite qua tool calls.
@@ -217,9 +223,16 @@ So sánh 10 repo qua GitHub API. Chi tiết số liệu và lý do ở
   (mọi tool signature là `-> str`) nên AI không tự nhìn thấy thứ nó vừa vẽ. Hai điều này định hình
   toàn bộ bộ recipes: compose bằng shape primitives, và bắt buộc kiểm chứng bằng tool đọc lại.
 
-- **Cập nhật server upstream:** `vendor/aseprite-mcp` là clone `--depth 1`, không phải submodule.
-  Muốn cập nhật phải `git pull` thủ công trong thư mục đó. Sau khi pull, chạy lại `uv sync` và
-  smoke test trước khi tin là còn hoạt động. [INF]
+- **Cập nhật server upstream:** `vendor/aseprite-mcp` là **git submodule**.
+  [GT — kiểm chứng 2026-08-18: `.gitmodules` có entry, `git ls-files -s vendor/aseprite-mcp` trả
+  mode `160000`. Bản ghi cũ ở đây nói "clone `--depth 1`, không phải submodule" là SAI, đã sửa.]
+  Hệ quả:
+    - Clone máy mới phải dùng `git clone --recurse-submodules`, hoặc bù bằng
+      `git submodule update --init --recursive`. Thiếu bước này thư mục sẽ rỗng.
+    - Cập nhật upstream: `git submodule update --remote vendor/aseprite-mcp`, rồi commit con trỏ
+      submodule mới ở repo cha.
+    - Sau khi cập nhật, chạy lại `uv --directory vendor/aseprite-mcp sync` và smoke test trước khi
+      tin là còn hoạt động.
 
 - **RỦI RO CẦN XỬ LÝ — bản cài Aseprite hiện tại:** [GT — quan sát trực tiếp trên máy]
   Bản Aseprite đang dùng nằm ở `C:\Users\Admin\Downloads\Aseprite.v1.3.17.2_LinkNeverDie.Com\`,
@@ -267,14 +280,25 @@ Ba file entry-point `AGENTS.md` / `CLAUDE.md` / `CHATGPT.md` đều đã trỏ t
 - **Runtime:** Python 3.13 qua `uv`. Dependency: `httpx`, `mcp[cli]`, `pillow`.
 - **Cơ chế:** CLI + Lua script tạm.
 - **Số tool thực tế:** 116 (README upstream ghi 104 — repo đã thêm từ lúc viết README).
-- **Đăng ký với Claude Code:** scope `local`, lưu trong `C:\Users\Admin\.claude.json`. Trạng thái
-  `claude mcp list`: **✔ Connected**.
-- **Cấu hình cho client khác:** `mcp-client-config.example.json` ở gốc dự án — file mẫu để copy
-  sang Cursor/Cline/ChatGPT hoặc bất kỳ MCP client nào. Đây là cách giữ ràng buộc model-agnostic.
-  *Lưu ý:* file này cố ý KHÔNG đặt tên `.mcp.json`. Nếu đặt tên đó, Claude Code sẽ nạp nó thành
-  server ở scope `project`, trùng với entry `local` đang dùng và sinh cảnh báo "defined in multiple
-  scopes". Muốn đổi đường dẫn thì sửa cả file mẫu lẫn entry local (`claude mcp remove/add`).
-- **Đường dẫn Aseprite:** khai báo trong `vendor/aseprite-mcp/.env` qua biến `ASEPRITE_PATH`.
+- **Cấu hình cho mọi client — cơ chế hiện hành từ 2026-08-18:** [GT]
+  Nguồn duy nhất là `mcp-servers.template.json` (dùng placeholder `${PROJECT_ROOT}`, `${UV_BIN}`,
+  `${ASEPRITE_PATH}`, không chứa đường dẫn máy cá nhân). Chạy `node scripts/setup-mcp.js` để sinh
+  config đúng schema cho từng client: `.mcp.json` (Claude), `.cursor/mcp.json`, `.vscode/mcp.json`,
+  `.gemini/settings.json`, `.codex/config.snippet.toml` (copy tay) và `mcp-config.generated.json`
+  (Antigravity/Cline/Continue import tay). Toàn bộ bản sinh đều gitignore.
+  Đường dẫn của từng máy: script tự dò, hoặc điền tay vào `mcp.local.json`
+  (mẫu: `mcp.local.example.json`, cũng gitignore).
+  *Ghi chú lịch sử:* bản ghi cũ nói cố ý KHÔNG đặt tên `.mcp.json` để tránh cảnh báo "defined in
+  multiple scopes". Nay `.mcp.json` được sinh ra và trở thành nguồn chuẩn cho Claude Code, nên
+  **entry scope `local` cũ phải gỡ**: `claude mcp remove aseprite -s local`. File
+  `mcp-client-config.example.json` đã bị xoá, thay bằng hai file nêu trên.
+- **Đường dẫn Aseprite:** truyền qua `env.ASEPRITE_PATH` trong config MCP sinh bởi `setup-mcp.js`.
+  Server đọc `os.getenv('ASEPRITE_PATH', 'aseprite')` tại
+  `vendor/aseprite-mcp/aseprite_mcp/core/commands.py:53`, và có gọi `dotenv.load_dotenv` trỏ vào
+  `vendor/aseprite-mcp/.env` (dòng 6-7). `load_dotenv` mặc định `override=False` nên **biến truyền
+  từ config MCP thắng** giá trị trong `.env`. [GT — đọc mã nguồn 2026-08-18]
+  File `.env` đó nằm trong submodule và không được commit, nên máy mới sẽ không có — đây chính là
+  lý do đường dẫn phải đi qua config MCP thay vì dựa vào `.env`.
 
 ## 7.3. Bước kế tiếp — ĐÃ CHỐT với người dùng ngày 2026-08-18 [GT]
 Thứ tự ưu tiên cho phiên kế tiếp:

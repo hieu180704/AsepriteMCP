@@ -1,0 +1,25 @@
+{
+  "_source": "Nguồn duy nhất khai báo MCP server của dự án. KHÔNG commit đường dẫn máy cá nhân vào đây.",
+  "_placeholders": {
+    "${PROJECT_ROOT}": "Đường dẫn tuyệt đối tới gốc repo, setup-mcp.js tự điền.",
+    "${UV_BIN}": "Đường dẫn tới uv. Ưu tiên mcp.local.json > biến môi trường UV_BIN > dò trên PATH.",
+    "${ASEPRITE_PATH}": "Đường dẫn tới Aseprite.exe. Ưu tiên mcp.local.json > biến môi trường ASEPRITE_PATH > dò các vị trí cài phổ biến."
+  },
+  "_generate": "node scripts/setup-mcp.js",
+  "mcpServers": {
+    "aseprite": {
+      "type": "stdio",
+      "command": "${UV_BIN}",
+      "args": [
+        "--directory",
+        "${PROJECT_ROOT}/vendor/aseprite-mcp",
+        "run",
+        "-m",
+        "aseprite_mcp"
+      ],
+      "env": {
+        "ASEPRITE_PATH": "${ASEPRITE_PATH}"
+      }
+    }
+  }
+}

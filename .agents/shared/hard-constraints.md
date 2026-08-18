@@ -1,24 +1,11 @@
-# AsepriteMCP — Claude Code
+# AsepriteMCP — Ràng Buộc Cứng (Hard Constraints)
 
-> 💡 Gõ `/init` để AI phỏng vấn bối cảnh và hoàn tất thiết lập tài liệu dự án.
-
-**Cách nạp ngữ cảnh trên Claude Code**
-
-- Rules đầy đủ đã nạp thường trực từ `.claude/rules/` (bản sinh của `.agents/rules/`).
-- Recipes ở `.claude/recipes/`, bắt đầu từ `aseprite-00-playbook.md`.
-- Skills đã đăng ký thành slash command tại `.claude/commands/` — `/asset-qc`, `/verify`, `/doc`,
-  `/plan`, `/explain`, `/research`, `/newsession`, `/worktree`, `/system-cleanup`, `/init`.
-- Hooks chạy qua `.claude/settings.json` (safety-guard, read-guard, closeout-trigger).
-- MCP server Aseprite khai báo tại `.mcp.json`, sinh bằng `node scripts/setup-mcp.js`.
-
-**Toàn bộ thư mục `.claude/` là bản sinh.** Sửa ở `.agents/` rồi chạy `node scripts/sync-agents.js`.
+> File nguồn. `node scripts/sync-agents.js` nhúng nội dung này vào mọi entry point của mọi AI
+> client (Claude, Antigravity, Gemini, ChatGPT/Codex, Cursor). **Sửa ở đây, không sửa ở bản nhúng.**
+> Bản nhúng nằm giữa cặp marker `<!-- BEGIN synced-hard-constraints -->` / `<!-- END ... -->`
+> và bị ghi đè mỗi lần sync.
 
 ---
-
-<!-- BEGIN synced-hard-constraints -->
-<!-- Sinh tự động từ .agents/shared/hard-constraints.md — sửa nguồn rồi chạy `node scripts/sync-agents.js`. Sửa trực tiếp ở đây sẽ bị ghi đè. -->
-
-# Ràng Buộc Cứng — áp dụng như nhau cho mọi AI client
 
 ## 1. Định nghĩa dự án
 
@@ -103,5 +90,3 @@ ChatGPT/Codex, Cursor, Cline, Continue và client MCP tương lai. Hệ quả b�
 | Skills (`/asset-qc`, `/doc`, `/verify`...) | `.agents/skills/` |
 | Server MCP bên thứ ba | `vendor/aseprite-mcp/` (upstream, không sửa) |
 | Setup máy mới | `README.md` |
-
-<!-- END synced-hard-constraints -->

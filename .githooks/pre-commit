@@ -1,0 +1,34 @@
+#!/bin/sh
+# Pre-commit guard — chặn commit khi bản sinh lệch khỏi nguồn `.agents/`.
+#
+# Vì sao cần: `.claude/`, `.cursor/rules/` và block hard-constraints trong các entry point đều là
+# bản sinh nhưng vẫn được commit. Quên chạy sync thì commit ra bản cũ, và máy khác / model khác
+# nhận rule sai mà không có gì báo.
+#
+# Bật: git config core.hooksPath .githooks
+# Bỏ qua một lần (không khuyến khích): git commit --no-verify
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "[pre-commit] Không tìm thấy node — không kiểm tra được đồng bộ .agents/."
+  echo "             Cài Node.js, hoặc commit với --no-verify nếu bạn chắc chắn."
+  exit 1
+fi
+
+if ! node scripts/sync-agents.js --check; then
+  echo ""
+  echo "[pre-commit] Chạy \`node scripts/sync-agents.js\`, \`git add\` lại rồi commit."
+  exit 1
+fi
+
+# Config MCP chứa đường dẫn tuyệt đối của máy cá nhân, đã nằm trong .gitignore.
+# Chặn nốt trường hợp bị đưa vào index bằng `git add -f`.
+staged_local_config=$(git diff --cached --name-only | grep -E '^(\.mcp\.json|mcp\.local\.json|mcp-config\.generated\.json|\.cursor/mcp\.json|\.gemini/settings\.json|\.codex/config\.snippet\.toml)$' || true)
+if [ -n "$staged_local_config" ]; then
+  echo "[pre-commit] Đang commit cấu hình MCP của máy cá nhân:"
+  echo "$staged_local_config" | sed 's/^/             /'
+  echo "             Các file này là bản sinh của scripts/setup-mcp.js, không commit."
+  echo "             Gỡ bằng: git restore --staged <file>"
+  exit 1
+fi
+
+exit 0

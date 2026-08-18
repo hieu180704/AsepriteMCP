@@ -1,17 +1,16 @@
-# AsepriteMCP — Claude Code
+# AsepriteMCP — Gemini CLI
 
 > 💡 Gõ `/init` để AI phỏng vấn bối cảnh và hoàn tất thiết lập tài liệu dự án.
 
-**Cách nạp ngữ cảnh trên Claude Code**
+**Cách nạp ngữ cảnh trên Gemini CLI**
 
-- Rules đầy đủ đã nạp thường trực từ `.claude/rules/` (bản sinh của `.agents/rules/`).
-- Recipes ở `.claude/recipes/`, bắt đầu từ `aseprite-00-playbook.md`.
-- Skills đã đăng ký thành slash command tại `.claude/commands/` — `/asset-qc`, `/verify`, `/doc`,
-  `/plan`, `/explain`, `/research`, `/newsession`, `/worktree`, `/system-cleanup`, `/init`.
-- Hooks chạy qua `.claude/settings.json` (safety-guard, read-guard, closeout-trigger).
-- MCP server Aseprite khai báo tại `.mcp.json`, sinh bằng `node scripts/setup-mcp.js`.
-
-**Toàn bộ thư mục `.claude/` là bản sinh.** Sửa ở `.agents/` rồi chạy `node scripts/sync-agents.js`.
+- File này được Gemini CLI đọc tự động ở gốc dự án.
+- Rules đầy đủ nằm ở `.agents/rules/` (5 file) — đọc khi cần chi tiết ngoài phần ràng buộc cứng bên dưới.
+- Recipes thao tác Aseprite ở `.agents/recipes/`, bắt đầu từ `aseprite-00-playbook.md`.
+- Skills (`/asset-qc`, `/verify`, `/doc`, `/plan`...) ở `.agents/skills/<tên>/SKILL.md` — Gemini CLI
+  không tự đăng ký slash command, nên khi người dùng gõ `/asset-qc` thì đọc file SKILL.md tương ứng
+  rồi thực hiện đúng quy trình trong đó.
+- MCP server Aseprite khai báo tại `.gemini/settings.json`, sinh bằng `node scripts/setup-mcp.js`.
 
 ---
 

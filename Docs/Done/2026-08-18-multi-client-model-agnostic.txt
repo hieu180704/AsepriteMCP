@@ -1,0 +1,146 @@
+WORKLOG — Chuẩn hoá dự án chạy đồng nhất trên mọi AI client
+Ngày: 2026-08-18
+
+# Mục lục
+1. Mục tiêu
+2. Hiện trạng trước khi làm — 6 điểm gãy
+3. Đã làm gì
+4. File thay đổi
+5. Kiểm chứng đã chạy
+6. Còn tồn — cần người dùng quyết
+---
+
+# 1. Mục tiêu
+
+Người dùng làm việc trên nhiều máy và nhiều AI client (Claude Code ở máy này, Antigravity ở máy
+khác, có thể Gemini/ChatGPT). Yêu cầu: AI phải hoạt động **giống hệt nhau** ở mọi nơi.
+
+Kiểm tra cho thấy dự án mới đạt khoảng 60%: lớp chỉ dẫn (rules/recipes) có cơ chế đồng bộ, nhưng
+lớp kết nối MCP và mức độ đầy đủ của rule giữa các client thì lệch nhau.
+
+---
+
+# 2. Hiện trạng trước khi làm — 6 điểm gãy
+
+G1. `.mcp.json` không tồn tại dù AGENTS.md và overview.txt đều cam kết có. Config đang chạy nằm ở
+    scope `local` của Claude Code (ngoài repo) → đổi máy hoặc đổi client là cấu hình lại từ đầu.
+G2. `ASEPRITE_PATH` không khai báo ở đâu trong repo. Server đọc
+    `os.getenv('ASEPRITE_PATH', 'aseprite')` (vendor/aseprite-mcp/aseprite_mcp/core/commands.py:53),
+    example config để `"env": {}` rỗng → máy khác fallback gọi `aseprite` trên PATH và gãy im lặng.
+G3. Không có README/SETUP ở gốc. Kiến thức setup nằm rải trong Docs/Done.
+G4. Nội dung rule lệch cấp giữa các client: Claude có đủ 5 rule + recipes; `.cursorrules` chỉ 8 dòng
+    và `.openai/system-prompt.txt` 12 dòng, cả hai THIẾU ràng buộc "không tự xây MCP server" và
+    toàn bộ giao thức Aseprite. Cùng một prompt cho hành vi khác nhau.
+G5. Hooks chỉ phủ 2 client, và 2 file khai báo hook không nằm trong phạm vi sync script.
+G6. Không có cơ chế chống drift: `.claude/` được commit, quên chạy sync thì commit ra bản cũ.
+
+---
+
+# 3. Đã làm gì
+
+## 3.1. Nguồn ràng buộc dùng chung
+Tạo `.agents/shared/hard-constraints.md` — bản cô đọng mọi ràng buộc PHẢI giống nhau giữa các
+model: định nghĩa dự án, 4 pha, giao thức Aseprite R1-R8 + kiểm chứng, model-agnostic, chuẩn
+output, bản đồ ngữ cảnh. `sync-agents.js` nhúng file này vào 6 entry point giữa cặp marker
+`<!-- BEGIN synced-hard-constraints -->` / `<!-- END ... -->`. Giải G4.
+
+## 3.2. Viết lại scripts/sync-agents.js
+Trước: copy 3 thư mục + skill→command, không xoá file thừa, không kiểm tra.
+Sau: dựng "kế hoạch sync" trong bộ nhớ rồi mới ghi, nhờ đó dùng chung logic cho 2 chế độ.
+ - Mirror `.agents/{rules,recipes,hooks}` → `.claude/`
+ - `.agents/skills/<tên>/SKILL.md` → `.claude/commands/<tên>.md`
+ - `.agents/rules/*.md` → `.cursor/rules/*.mdc` (frontmatter `alwaysApply: true`, format Cursor >= 0.45)
+ - Nhúng hard-constraints vào AGENTS.md, CLAUDE.md, GEMINI.md, CHATGPT.md, .cursorrules,
+   .openai/system-prompt.txt
+ - Xoá file mồ côi trong 5 thư mục sinh hoàn toàn
+ - `--check`: không ghi, exit 1 nếu lệch hoặc có file mồ côi. Giải G6.
+
+## 3.3. Cấu hình MCP đa client
+ - `mcp-servers.template.json` — nguồn duy nhất, dùng placeholder `${PROJECT_ROOT}`, `${UV_BIN}`,
+   `${ASEPRITE_PATH}`. Không chứa đường dẫn máy cá nhân.
+ - `mcp.local.example.json` — mẫu override cho từng máy; bản thật `mcp.local.json` bị gitignore.
+ - `scripts/setup-mcp.js` — resolve đường dẫn theo thứ tự mcp.local.json > biến môi trường > dò tự
+   động (gồm quét thư mục Downloads/Desktop theo pattern `*aseprite*` cho bản portable), rồi sinh:
+       .mcp.json                    Claude Code / Desktop
+       .cursor/mcp.json             Cursor
+       .vscode/mcp.json             VS Code / Copilot   (khoá `servers`, không phải `mcpServers`)
+       .gemini/settings.json        Gemini CLI          (merge, không đè setting khác)
+       .codex/config.snippet.toml   Codex CLI           (copy tay vào ~/.codex/config.toml)
+       mcp-config.generated.json    Antigravity / Cline / Continue / client khác
+   Tất cả bản sinh đều gitignore. `--check` báo cáo mà không ghi. Giải G1, G2.
+
+## 3.4. README.md ở gốc
+6 bước setup máy mới, bảng "client nào đọc file nào", sơ đồ sinh file, mục giới hạn đã biết,
+bảng xử lý sự cố. Giải G3.
+
+## 3.5. Hook chống drift
+`.githooks/pre-commit` chạy `sync-agents.js --check` và chặn commit khi lệch; đồng thời chặn
+trường hợp `git add -f` nhầm file config MCP cá nhân. Bật bằng `git config core.hooksPath .githooks`
+(đã bật trên máy này).
+
+## 3.6. Về G5 — hooks
+KHÔNG mở rộng hooks sang Cursor/Gemini/Codex. Lý do: chưa kiểm chứng được schema khai báo hook của
+các client đó, viết mò sẽ tạo file trông như đang bảo vệ mà thực chất không chạy — nguy hiểm hơn là
+không có. Thay vào đó ghi thẳng giới hạn này vào README mục 5 và AGENTS.md.
+
+---
+
+# 4. File thay đổi
+
+Tạo mới:
+  .agents/shared/hard-constraints.md      nguồn ràng buộc dùng chung
+  scripts/setup-mcp.js                    generator config MCP đa client
+  mcp-servers.template.json               nguồn khai báo MCP server
+  mcp.local.example.json                  mẫu override đường dẫn theo máy
+  .githooks/pre-commit                    chặn commit khi bản sinh lệch
+  README.md                               hướng dẫn setup máy mới
+  GEMINI.md                               entry point Gemini CLI
+  .cursor/rules/*.mdc                     5 file, bản sinh cho Cursor >= 0.45
+
+Sửa:
+  scripts/sync-agents.js                  viết lại: nhúng block, sinh .mdc, prune, --check
+  AGENTS.md, CLAUDE.md, CHATGPT.md        rút gọn phần đặc thù client + nhúng block chung
+  .cursorrules, .openai/system-prompt.txt nt
+  .gitignore                              ignore 6 file config MCP sinh theo máy
+
+Xoá:
+  mcp-client-config.example.json          thay bởi mcp-servers.template.json + mcp.local.example.json
+
+---
+
+# 5. Kiểm chứng đã chạy
+
+  node scripts/sync-agents.js             41 file bản sinh, cập nhật 11 file
+  node scripts/sync-agents.js --check     exit 0 khi khớp
+  (giả lập lệch)                          exit 1, chỉ đúng file lệch
+  (giả lập file mồ côi)                   exit 1, chỉ đúng file mồ côi; sync sau đó xoá đúng file
+  sh .githooks/pre-commit                 exit 0 ở trạng thái sạch
+  node scripts/setup-mcp.js --check       dò ra uv + Aseprite trên máy này
+  node scripts/setup-mcp.js               sinh đủ 6 file
+  uv --directory vendor/aseprite-mcp run python -c "import aseprite_mcp"
+                                          → "import OK": lệnh trong .mcp.json chạy thật
+  git check-ignore                        cả 6 file config máy-specific đều ignored
+
+CHƯA kiểm chứng (không có sẵn client để thử trên máy này): config sinh ra có được Antigravity,
+Gemini CLI, Codex CLI, Cursor và VS Code nạp đúng hay không. Chỉ có nhánh Claude Code là chạy thật.
+
+---
+
+# 6. Còn tồn — cần người dùng quyết
+
+## 6.1. Doc drift trong overview.txt (chưa sửa, theo quy tắc không tự ghi đè tài liệu gốc)
+ - Mục 6, dòng ~220: "vendor/aseprite-mcp là clone --depth 1, không phải submodule" — SAI.
+   `.gitmodules` có entry và `git ls-files -s vendor/aseprite-mcp` trả mode 160000 → là submodule.
+   Kéo theo hướng dẫn "muốn cập nhật phải git pull thủ công" cũng sai quy trình; đúng phải là
+   `git submodule update --remote vendor/aseprite-mcp`.
+ - Mục 2, dòng ~35: "cấu hình giữ ở dạng .mcp.json phổ thông để client nào cũng copy sang được" —
+   nay đã thay bằng cơ chế template + generator, cần cập nhật câu này.
+ - Mục 5.3 và các mục nhắc `mcp-client-config.example.json` — file đã bị xoá.
+
+## 6.2. Bản cài Aseprite
+Vẫn nằm ở `C:\Users\Admin\Downloads\Aseprite.v1.3.17.2_LinkNeverDie.Com\` (rủi ro đã ghi ở
+overview mục 6). `setup-mcp.js` dò được nhờ quét pattern, nhưng đây là vá triệu chứng: thư mục
+Downloads bị dọn là gãy. Khuyến nghị cũ giữ nguyên — mua bản quyền, cài vào đường dẫn cố định.
+
+## 6.3. Hooks trên các client còn lại
+Cần kiểm chứng schema hook của Cursor / Gemini CLI / Codex CLI rồi mới bổ sung. Chưa làm.
