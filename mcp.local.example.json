@@ -1,0 +1,5 @@
+{
+  "_huong_dan": "Copy file này thành mcp.local.json rồi điền đường dẫn của MÁY NÀY. File mcp.local.json bị gitignore nên đường dẫn cá nhân không lọt vào repo. Bỏ trống giá trị nào thì setup-mcp.js tự dò giá trị đó.",
+  "UV_BIN": "",
+  "ASEPRITE_PATH": ""
+}

@@ -1,0 +1,85 @@
+QUYẾT ĐỊNH — Cơ chế cấu hình MCP và rule cho nhiều AI client
+
+# Mục lục
+1. Bối Cảnh & Vấn Đề
+2. Các Phương Án Đã Cân Nhắc
+3. Quyết Định Đã Chốt & Lý Do
+4. Hệ Quả Phải Tuân Thủ
+
+---
+
+# 1. Bối Cảnh & Vấn Đề
+- Ngày ghi nhận: 2026-08-18
+- Người quyết: người dùng (chốt trực tiếp trong phiên).
+
+Người dùng làm việc trên nhiều máy và nhiều AI client — Claude Code ở máy này, Antigravity ở máy
+khác, có thể thêm Gemini/ChatGPT. Yêu cầu: **AI phải hoạt động giống hệt nhau ở mọi nơi**.
+
+Rà soát cho thấy hai lỗ hổng thật, không phải giả định:
+  1. **Ràng buộc lệch cấp giữa các client.** Claude Code có đủ 5 rule + recipes; `.cursorrules`
+     chỉ 8 dòng và `.openai/system-prompt.txt` 12 dòng, cả hai thiếu hẳn ràng buộc "KHÔNG tự xây
+     MCP server" lẫn giao thức Aseprite. Cùng một prompt cho hành vi khác nhau.
+  2. **Kết nối MCP không portable.** `.mcp.json` mà tài liệu cam kết có thật ra không tồn tại;
+     config đang chạy nằm ở scope `local` của Claude Code, ngoài repo. `ASEPRITE_PATH` không khai
+     báo ở đâu trong repo, mà server lại fallback `os.getenv('ASEPRITE_PATH', 'aseprite')` — máy
+     khác sẽ gãy im lặng chứ không báo lỗi.
+
+---
+
+# 2. Các Phương Án Đã Cân Nhắc
+
+**PA1 — Một file `.mcp.json` chung, mọi client copy sang.** Đây là hướng tài liệu cũ đã ghi.
+  - Ưu: đơn giản, một file duy nhất.
+  - Nhược: **không khả thi**. Mỗi client đọc một đường dẫn và một schema khác nhau: Claude
+    `.mcp.json`, Cursor `.cursor/mcp.json`, VS Code `.vscode/mcp.json` (khoá `servers` chứ không
+    phải `mcpServers`), Gemini `.gemini/settings.json`, Codex `~/.codex/config.toml` dạng TOML và
+    nằm NGOÀI repo. "Copy sang được" chỉ đúng với 2/6 client.
+
+**PA2 — Commit sẵn config cho từng client, điền đường dẫn tuyệt đối.**
+  - Ưu: cắm là chạy trên máy đã cấu hình.
+  - Nhược: đường dẫn `uv` và `Aseprite.exe` khác nhau theo máy → commit path cá nhân vào repo, máy
+    thứ hai gãy ngay. Đi ngược commit 7929fef ("thay path may ca nhan bang placeholder").
+
+**PA3 — Template + generator.** Nguồn duy nhất là template có placeholder; một script resolve
+đường dẫn của máy hiện tại rồi sinh ra file đúng schema cho từng client; bản sinh không commit.
+  - Ưu: repo sạch path cá nhân; thêm client mới chỉ là thêm một mục trong script; đổi đường dẫn
+    chỉ cần chạy lại một lệnh.
+  - Nhược: thêm một bước setup bắt buộc trên mỗi máy; hai client (Codex, Antigravity) vẫn cần
+    import tay vì config của chúng nằm ngoài repo.
+
+---
+
+# 3. Quyết Định Đã Chốt & Lý Do
+
+**Chọn PA3 cho cấu hình MCP, và cơ chế "nguồn + nhúng" cho rule.**
+
+Rationale:
+- PA1 bị loại vì kiểm chứng thực tế cho thấy tiền đề của nó sai — schema các client không tương
+  thích. Giữ PA1 là giữ một cam kết trong tài liệu mà thực tế không thực hiện được.
+- PA2 bị loại vì mâu thuẫn trực tiếp với yêu cầu "chạy trên nhiều máy".
+- Đánh đổi chấp nhận: thêm một lệnh `node scripts/setup-mcp.js` khi setup máy mới. Chi phí một
+  lần, đổi lấy việc mọi client dùng chung một khai báo server.
+
+Cơ chế rule: `.agents/shared/hard-constraints.md` là nguồn duy nhất của phần ràng buộc phải giống
+nhau; `scripts/sync-agents.js` nhúng nguyên khối vào 6 entry point giữa cặp marker. Lý do chọn
+nhúng thay vì để mỗi entry point trỏ tới file chung: ChatGPT web và Custom GPT không đọc được file
+trong repo, nên bản của chúng bắt buộc phải tự chứa.
+
+---
+
+# 4. Hệ Quả Phải Tuân Thủ
+
+- **Không commit đường dẫn máy cá nhân.** Mọi config MCP sinh ra đều gitignore; `.githooks/pre-commit`
+  chặn cả trường hợp `git add -f`.
+- **Không sửa bản sinh.** Sửa `.agents/` rồi chạy `node scripts/sync-agents.js`. Script xoá file mồ
+  côi trong các thư mục sinh hoàn toàn.
+- **Thêm MCP server mới** thì thêm vào `mcp-servers.template.json`, không thêm thẳng vào config của
+  một client.
+- **Entry scope `local` của Claude Code phải gỡ** (`claude mcp remove aseprite -s local`) để tránh
+  trùng với `.mcp.json` sinh ở scope project.
+- **Giới hạn còn lại:** hooks chỉ chạy trên Claude Code và Antigravity. Không viết hook cho
+  Cursor/Gemini/Codex khi chưa kiểm chứng được schema của chúng — một file hook trông như đang bảo
+  vệ mà thực chất không chạy còn nguy hiểm hơn là không có.
+
+Chi tiết thực thi và kiểm chứng: `Docs/Done/2026-08-18-multi-client-model-agnostic.txt`.
+Hướng dẫn vận hành: `README.md`.

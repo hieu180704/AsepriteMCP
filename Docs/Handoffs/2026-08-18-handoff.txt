@@ -1,0 +1,92 @@
+BÀN GIAO PHIÊN LÀM VIỆC — 2026-08-18
+
+# Mục lục
+1. Trạng Thái Hiện Tại
+2. Những Việc Đã Xong
+3. Đầu Việc Tiếp Theo
+4. Bẫy Ngầm & Quy Tắc Cần Nhớ
+
+---
+
+# 1. Trạng Thái Hiện Tại
+- **Nhánh Git:** `docs/aseprite-recipes` (KHÔNG detached — bản handoff đầu ghi sai, đã đính chính).
+  `main` đang ở `7929fef`, nhánh làm việc đi trước 1 commit.
+- **Hạ tầng:** MCP server `diivi/aseprite-mcp` đã kết nối, 116 tools, chạy thật đạt.
+- **Tài liệu:** đã có bộ recipes hướng dẫn AI thao tác Aseprite (4 file).
+- **Hooks:** đã sửa xong 5 lỗi, hooks hoạt động client-agnostic (xem overview 5.3).
+- **Điểm mở còn lại:** 2 — convention Unity (5.1), bản cài Aseprite (5.2).
+
+---
+
+# 2. Những Việc Đã Xong
+- [x] Khảo sát nghiên cứu ngoài về tối ưu AI làm việc với Aseprite qua MCP.
+- [x] Viết 4 recipe tại `.agents/recipes/` (playbook + static sprite + animation + edit existing).
+- [x] Đồng bộ sang `.claude/recipes/` bằng `node scripts/sync-agents.js`, verify identical.
+- [x] Trỏ đường từ `AGENTS.md`, `CLAUDE.md`, `CHATGPT.md` tới playbook.
+- [x] Cập nhật `Docs/SourceOfTruth/overview.txt` (mục 5.3, 6, 7.1, 7.3, 7.4).
+- [x] Worklog fragment: `Docs/Done/2026-08-18-viet-recipes-aseprite-cho-ai.txt`.
+
+---
+
+# 3. Đầu Việc Tiếp Theo
+
+Ba việc đã chốt ở phiên trước — **đã làm xong toàn bộ ngày 2026-08-18**:
+
+- [x] **(1) Sửa hooks đang hỏng.** Người dùng chốt: dự án phải chạy trên *mọi* AI client và mọi
+      thiết bị, nên không sửa argv → stdin mà viết module `.agents/hooks/hook-io.js` tự dò input.
+      Sửa tổng cộng 5 lỗi (3 lỗi đã biết + exit code phải là 2 mới chặn được + `closeout-trigger.js`
+      chưa nối dây). 15 ca test CLI đạt. Chi tiết đầy đủ: overview mục 5.3.
+
+- [x] **(2) Tạo skill `/asset-qc`** tại `.agents/skills/asset-qc/SKILL.md`, sync sinh
+      `.claude/commands/asset-qc.md`. Ngưỡng trỏ sang playbook 4.1, cố ý không chép.
+
+- [x] **(3) Tạo rule `.agents/rules/aseprite-protocol.md`** — 22 dòng, nạp thường trực.
+
+## Việc còn lại
+
+- [x] **Xác nhận wiring hooks.** XONG ngay trong phiên 2026-08-18: Write lên file `.env` bị chặn
+      thật kèm `[SAFETY VIOLATION]`, `git commit` bắn `[LIVING DOCS REMINDER]`. Không phải chờ
+      phiên sau như phỏng đoán ban đầu — Claude Code có nạp lại `settings.json` trong phiên.
+- [ ] Chạy thử recipes + `/asset-qc` trên tác vụ thật rồi sửa lại theo kết quả.
+- [ ] Chốt convention export Unity (5.1).
+- [ ] Xử lý đường dẫn/bản quyền Aseprite (5.2), rồi mới làm `/aseprite-doctor`.
+
+---
+
+# 4. Bẫy Ngầm & Quy Tắc Cần Nhớ
+
+- **`.claude/` là BẢN SAO, không phải nguồn.** `scripts/sync-agents.js` copy một chiều
+  `.agents/` → `.claude/`. Sửa thẳng trong `.claude/` tạo file mồ côi, không đến được model khác.
+  Luôn sửa ở `.agents/` rồi chạy `node scripts/sync-agents.js`.
+
+- **Kiểm tra thư mục thực tế trước khi đề xuất vị trí file.** Phiên này đã sai hai lần liên tiếp
+  vì bỏ qua bước đó.
+
+- **Server không trả ảnh về cho model.** Mọi tool signature là `-> str`. AI không tự nhìn thấy thứ
+  nó vẽ — đây là lý do giao thức kiểm chứng tồn tại. Đừng tin thông báo "thành công" của tool.
+
+- **Đường dẫn tới file Aseprite phải tuyệt đối.** `core/commands.py:77` giải đường dẫn tương đối
+  theo cwd của tiến trình server, không phải thư mục dự án.
+
+- **Frame index: tool nhận 1-based, JSON export ra ghi 0-based.** Rất dễ nhầm khi đối chiếu tag.
+
+- **Không đề xuất tự xây MCP server.** Ràng buộc cứng, người dùng đã chốt 2026-08-18.
+
+- **Bản Aseprite đang dùng là bản bẻ khoá nằm trong `Downloads/`.** Đường dẫn chắc chắn sẽ gãy.
+  Khi hàng loạt tool báo lỗi lạ, kiểm `ASEPRITE_PATH` trong `vendor/aseprite-mcp/.env` trước tiên.
+
+- **Hook script không được giả định giao thức của một client.** Mỗi client truyền input một kiểu
+  (Claude Code: stdin JSON; Antigravity: argv). Luôn đi qua `.agents/hooks/hook-io.js`, đừng đọc
+  thẳng `process.argv` hay `stdin` trong script mới.
+
+- **Exit code của hook là ngữ nghĩa, không phải quy ước.** Với Claude Code: 0 = cho qua,
+  **2 = chặn tool và đẩy stderr về cho model**, số khác = lỗi không chặn. Muốn model đọc được
+  thông báo lúc exit 0 thì phải in JSON `hookSpecificOutput.additionalContext`, stdout text thuần
+  chỉ hiện ở transcript.
+
+- **Sửa `.claude/settings.json` có hiệu lực ngay trong phiên** — đã kiểm chứng, không cần khởi động
+  lại. Nhưng vẫn phải thử tay mới biết wiring đúng: hook thoát 0 không để lại dấu vết nhìn thấy
+  được, im lặng có thể là "chạy và cho qua" mà cũng có thể là "không hề chạy".
+
+- **Quy trình 4 pha bắt buộc:** explore → propose → confirm → execute. Dừng cuối pha Propose chờ
+  duyệt, không tự nhảy pha.

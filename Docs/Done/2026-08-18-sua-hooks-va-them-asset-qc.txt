@@ -1,0 +1,110 @@
+WORKLOG — Sửa hooks, thêm skill /asset-qc và rule aseprite-protocol (2026-08-18)
+
+# Mục lục
+1. Mục Tiêu
+2. Đã Làm
+3. File Thay Đổi
+4. Kiểm Chứng
+5. Lưu Ý Cho Người Tiếp Quản
+
+---
+
+# 1. Mục Tiêu
+Ba đầu việc đã chốt tại `Docs/Handoffs/2026-08-18-handoff.txt` mục 3, làm đúng thứ tự:
+sửa hooks đang hỏng trước, rồi mới thêm skill và rule lên nền đã lành.
+
+---
+
+# 2. Đã Làm
+
+## 2.1. Sửa hooks — 5 lỗi
+Ba lỗi đã ghi nhận từ trước (overview 5.3): schema `.claude/settings.json` thiếu mảng `hooks` lồng;
+matcher viết dạng biểu thức `tool == '...'` trong khi Claude Code khớp regex theo tên tool; script
+đọc `process.argv[2]` trong khi Claude Code gửi stdin JSON.
+
+Hai lỗi phát hiện thêm khi thực hiện:
+- **Exit code:** guard trả `exit(1)` — với Claude Code đó là lỗi *không chặn*, tool vẫn chạy tiếp.
+  Phải là `exit(2)`. Nghĩa là sửa xong 3 lỗi kia thì guard vẫn không chặn được gì.
+- **`closeout-trigger.js` là file chết phía Claude:** được sync sang `.claude/hooks/` nhưng không hề
+  đăng ký trong `settings.json`.
+
+Quyết định thiết kế (người dùng chốt): dự án phải chạy trên **mọi AI client và mọi thiết bị**, nên
+không sửa argv → stdin. Đổi giả định sai này lấy giả định sai khác thì lần thêm client tiếp theo
+lại gãy. Thay vào đó viết `.agents/hooks/hook-io.js` — module dùng chung tự dò input: ưu tiên stdin
+JSON, không có thì rơi về argv; parse được JSON thì chỉ duyệt nhánh tham số tool
+(`tool_input`/`arguments`/`params`/`input`), gom giá trị nằm dưới key khớp
+`/path|file|filename|target|uri|url/i`.
+
+Điểm quan trọng: **chỉ soi đường dẫn, không soi nội dung file.** Match cả payload thì một lệnh ghi
+tài liệu có nhắc chữ `.env` sẽ bị chặn oan — chính file worklog này là ví dụ.
+
+`closeout-trigger.js` phải chuyển bộ lọc `git commit` từ matcher vào trong script, vì matcher của
+Claude Code chỉ khớp tên tool chứ không soi được nội dung lệnh. Quy tắc: input rỗng thì cứ nhắc
+(tin bộ lọc phía client cũ), chỉ im khi đọc được input và biết chắc không phải `git commit`.
+Script cũng trả `hookSpecificOutput.additionalContext` khi client nói JSON — stdout text thuần với
+exit 0 chỉ hiện ở transcript, model không đọc được.
+
+`.agents/hooks.json` giữ nguyên: matcher của Antigravity vẫn hợp lệ, script giờ ăn được cả hai.
+
+## 2.2. Skill /asset-qc
+Sáu bước kiểm chứng một file `.aseprite`: `get_sprite_info` → `get_color_stats` → `validate_scene`
+→ `audit_animation` → `compare_frames` mọi cặp frame liền kề → `export_sprite` PNG rồi soi bằng mắt.
+Kết bằng bảng PASS/WARN/FAIL kèm số liệu thật.
+
+Ngưỡng cảnh báo **trỏ sang mục 4.1 của playbook, cố ý không chép lại** — một ngưỡng chỉ sống ở một
+chỗ, chép ra là hai nguồn lệch nhau.
+
+## 2.3. Rule aseprite-protocol
+22 dòng nạp thường trực: R1-R8 mỗi rule một câu, nguyên tắc kiểm chứng, ràng buộc không tự xây
+server. Không mục lục (quality-standards chỉ bắt buộc với doc >100 dòng) và không lặp lại lý do —
+lý do nằm ở playbook. File này chỉ để chặn trường hợp model quên đọc recipe.
+
+---
+
+# 3. File Thay Đổi
+
+Mới:
+- `.agents/hooks/hook-io.js`
+- `.agents/skills/asset-qc/SKILL.md`
+- `.agents/rules/aseprite-protocol.md`
+
+Sửa:
+- `.agents/hooks/safety-guard.js`, `.agents/hooks/read-guard.js`, `.agents/hooks/closeout-trigger.js`
+- `.claude/settings.json` (file tay, sync không đụng tới)
+- `Docs/SourceOfTruth/overview.txt` (5.3, 7.1, 7.3, thêm 7.5)
+- `Docs/Handoffs/2026-08-18-handoff.txt` (mục 1, 3, 4)
+
+Bản sao trong `.claude/` do `node scripts/sync-agents.js` sinh ra, đã chạy sau mỗi đầu việc và đối
+chiếu identical từng cặp.
+
+---
+
+# 4. Kiểm Chứng
+15 ca test qua CLI, đúng exit code cả 15:
+- safety-guard: stdin JSON an toàn (0) / nhạy cảm (2), argv an toàn (0) / nhạy cảm (2), payload
+  phẳng kiểu client lạ (2), input rỗng (0), stdin rỗng (0).
+- read-guard: `.png` và `.pdf` ra cảnh báo, `.md` im lặng, đều exit 0.
+- closeout-trigger: `git commit` qua stdin JSON → nhắc dạng JSON; lệnh khác → im; argv có
+  `git commit` → nhắc dạng text; không truyền gì → nhắc dạng text; argv lệnh khác → im.
+- Chạy lại toàn bộ ca của safety-guard/read-guard sau khi refactor `hook-io.js` — không hồi quy.
+
+Skill `/asset-qc` đã xuất hiện trong danh sách skills của phiên ngay sau khi sync.
+
+---
+
+# 5. Lưu Ý Cho Người Tiếp Quản
+
+**Wiring hooks đã kiểm chứng thực tế, không chỉ ở mức CLI:**
+  1. `Write` lên một file `.env` → bị chặn, Claude Code trả `PreToolUse:Write hook error:
+     [SAFETY VIOLATION] ...`, file không được tạo.
+  2. `git commit` → `[LIVING DOCS REMINDER]` vào ngữ cảnh model; lệnh Bash khác thì im.
+  3. `read-guard.js` thoát 0 nên không có tín hiệu nhìn thấy được trong phiên — dùng chung đường
+     ống với hai hook trên, chỉ kiểm chứng được ở mức CLI.
+Trong lúc làm có phỏng đoán rằng Claude Code chụp cấu hình hooks lúc khởi động phiên nên phải chờ
+phiên sau mới verify được. **Phỏng đoán này sai** — settings.json được nạp lại ngay trong phiên.
+Lưu lại vì nó ảnh hưởng tới cách test hook về sau: cứ sửa rồi thử luôn, đừng hoãn.
+
+**Nhánh Git:** `docs/aseprite-recipes`, không phải detached HEAD như bản handoff đầu ghi nhầm.
+
+**Thêm hook mới thì đi qua `hook-io.js`**, đừng đọc thẳng `process.argv` hay stdin — đó đúng là gốc
+của bug vừa sửa.

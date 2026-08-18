@@ -18,8 +18,21 @@ __pycache__/
 *.bak
 .env
 
+# IDE
+.idea/
+.vscode/
+
 # Local agent settings
 .claude/settings.local.json
+
+# Cấu hình MCP sinh bởi `node scripts/setup-mcp.js` — chứa đường dẫn tuyệt đối của từng máy,
+# không được commit. Chỉ nguồn `mcp-servers.template.json` mới nằm trong repo.
+mcp.local.json
+mcp-config.generated.json
+.mcp.json
+.cursor/mcp.json
+.gemini/settings.json
+.codex/config.snippet.toml
 
 # Generated artifacts
 Output/

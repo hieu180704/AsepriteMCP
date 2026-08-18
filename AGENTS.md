@@ -1,41 +1,117 @@
 # AsepriteMCP — AI Agent Starter Kit
 
-> 💡 **Khởi tạo nhanh:** Gõ `/init` để AI tự động phỏng vấn bối cảnh và cập nhật toàn bộ tài liệu dự án.
+> 💡 Gõ `/init` để AI phỏng vấn bối cảnh và hoàn tất thiết lập tài liệu dự án.
 
-# Mục lục
-1. [Mục Tiêu Dự Án](#1-mục-tiêu-dự-án)
-2. [Bản Đồ Ngữ Cảnh](#2-bản-đồ-ngữ-cảnh)
-3. [Quy Tắc Đặc Thù](#3-quy-tắc-đặc-thù)
+File chuẩn `AGENTS.md` — Antigravity, Codex CLI, Cursor (agent mode) và phần lớn client đời mới đọc
+file này ở gốc dự án. Client khác có entry point riêng, nội dung ràng buộc **giống hệt**:
+`CLAUDE.md`, `GEMINI.md`, `CHATGPT.md`, `.cursorrules`, `.openai/system-prompt.txt`.
 
----
+**Cách nạp ngữ cảnh**
 
+- Rules đầy đủ: `.agents/rules/` (5 file, Antigravity nạp thường trực).
+- Recipes thao tác Aseprite: `.agents/recipes/`, bắt đầu từ `aseprite-00-playbook.md`.
+- Skills: `.agents/skills/<tên>/SKILL.md`. Client không tự đăng ký slash command thì khi người dùng
+  gõ `/asset-qc`, đọc file SKILL.md tương ứng rồi thực hiện đúng quy trình trong đó.
+- Hooks: `.agents/hooks.json` (matcher kiểu Antigravity) và `.claude/settings.json` (schema Claude
+  Code). Script hook dùng chung `.agents/hooks/hook-io.js` nên chạy được trên cả hai giao thức
+  stdin-JSON và argv. **Client khác hai loại trên hiện chưa có hooks** — guard an toàn không chạy,
+  cần tự cẩn trọng khi ghi file nhạy cảm.
+- MCP server Aseprite: nguồn `mcp-servers.template.json`, sinh config cho từng client bằng
+  `node scripts/setup-mcp.js`. Setup máy mới xem `README.md`.
 
-# 1. Mục Tiêu Dự Án
-- **Tên:** AsepriteMCP
-- **Mô tả:** Dự án **dùng MCP để AI làm việc qua Aseprite**. Đây là dự án ứng dụng — sử dụng một MCP server có sẵn, **KHÔNG tự xây server**.
-- **Server đang dùng:** `diivi/aseprite-mcp` (clone tại `vendor/aseprite-mcp`, 116 tools, đã kiểm chứng chạy thật).
-- **Ba mục tiêu cốt lõi:**
-  1. **AI tự tạo pixel art:** AI vẽ, sửa, quản lý layer/frame và animate sprite thông qua tool calls.
-  2. **Tự động hoá export asset:** Batch export sprite sheet, atlas và JSON metadata theo convention cố định.
-  3. **Phục vụ game Unity nội bộ:** Đầu ra phải khớp trực tiếp với pipeline import asset của Unity.
-
----
-
-# 2. Bản Đồ Ngữ Cảnh
-- **Tổng quan dự án (đọc trước tiên):** `Docs/SourceOfTruth/overview.txt`
-- **Tài liệu gốc (Source of Truth):** `Docs/SourceOfTruth/`
-- **Nhật ký quyết định:** `Docs/Decisions/`
-- **Tiêu chí nghiệm thu:** `Docs/QC/`
-- **Tiến độ đã hoàn thành:** `Docs/Done/`
-- **MCP server bên thứ ba:** `vendor/aseprite-mcp/` (code upstream, không sửa trừ khi có lý do rõ ràng)
-- **Cấu hình MCP mẫu cho client khác:** `mcp-client-config.example.json` ở gốc dự án (Claude Code dùng scope `local`, không đọc file này)
+**Sửa rule/recipe/skill: sửa ở `.agents/` rồi chạy `node scripts/sync-agents.js`.**
+`.claude/`, `.cursor/` và mọi block giữa marker `synced-hard-constraints` đều là bản sinh, sửa tay
+sẽ bị ghi đè và không đến được các model khác.
 
 ---
 
-# 3. Quy Tắc Đặc Thù
-- Tuân thủ quy trình 4 pha: `explore -> propose -> confirm -> execute`.
-- Luôn hiển thị Status Line ở cuối phản hồi.
-- **KHÔNG đề xuất tự xây MCP server.** Đây là ràng buộc cứng do người dùng chốt ngày 2026-08-18. Dự án dùng server có sẵn; mọi đề xuất kiểu "nên tự viết server bằng ngôn ngữ X" đều đi ngược định nghĩa dự án.
-- **Model-agnostic là ràng buộc cứng:** cấu hình và quy ước không được gắn cứng vào một AI client cụ thể. Giữ `.mcp.json` ở dạng chuẩn để client nào cũng copy sang được.
-- **Điểm mở còn lại:** convention export cho Unity, và xử lý bản cài Aseprite hiện tại (bản bẻ khoá nằm trong `Downloads/`, đường dẫn không ổn định). Chi tiết ở mục 5 và 6 của `Docs/SourceOfTruth/overview.txt`.
-- **Đầu ra hướng Unity:** khi thiết kế format export, ưu tiên thứ Unity đọc được ngay (sprite sheet + JSON metadata) thay vì format trung gian phải convert thêm.
+<!-- BEGIN synced-hard-constraints -->
+<!-- Sinh tự động từ .agents/shared/hard-constraints.md — sửa nguồn rồi chạy `node scripts/sync-agents.js`. Sửa trực tiếp ở đây sẽ bị ghi đè. -->
+
+# Ràng Buộc Cứng — áp dụng như nhau cho mọi AI client
+
+## 1. Định nghĩa dự án
+
+- **AsepriteMCP dùng MCP để AI làm việc qua Aseprite:** vẽ/sửa pixel art, tự động hoá export
+  sprite sheet & atlas, phục vụ pipeline game Unity.
+- **KHÔNG tự xây MCP server.** Ràng buộc cứng, người dùng chốt 2026-08-18. Dự án **sử dụng**
+  server có sẵn `diivi/aseprite-mcp` (`vendor/aseprite-mcp`, 116 tools, git submodule).
+  Mọi đề xuất kiểu "nên tự viết server bằng ngôn ngữ X" đều đi ngược định nghĩa dự án — từ chối.
+- **Đầu ra hướng Unity:** ưu tiên thứ Unity đọc được ngay (sprite sheet + JSON metadata), không
+  đẻ format trung gian phải convert thêm.
+
+## 2. Quy trình 4 pha — bắt buộc
+
+`explore -> propose -> confirm -> execute`
+
+- **Explore:** đọc tài liệu/dữ liệu thật, trích dẫn đường dẫn + số dòng. Không đoán.
+- **Propose:** nêu hiện trạng, nguyên nhân gốc, phương án và trade-off, phạm vi file sẽ đụng.
+- **Confirm:** **dừng ở cuối pha Propose để chờ người dùng duyệt.** Cấm tự nhảy sang Execute.
+- **Execute:** làm đúng phạm vi đã duyệt, không over-scope, kiểm chứng lại, ghi worklog.
+
+## 3. Giao thức Aseprite — đọc playbook trước khi gọi tool MCP
+
+Bản đầy đủ: `.agents/recipes/aseprite-00-playbook.md`. Recipe theo việc:
+`aseprite-static-sprite.md` (vẽ mới) · `aseprite-animation.md` (animation) ·
+`aseprite-edit-existing.md` (sửa asset có sẵn).
+
+- **R1 — Đường dẫn tuyệt đối.** Đường dẫn tương đối giải theo cwd của tiến trình server, gãy im lặng.
+- **R2 — Chốt palette trước khi vẽ pixel đầu tiên.** `apply_palette_preset` chỉ đổi bảng màu,
+  không đổi pixel đã vẽ.
+- **R3 — Màu shading lấy từ `generate_color_ramp`.** Tự nhân/chia độ sáng ra màu "nhựa".
+- **R4 — Luôn dùng biến thể `*_at`.** Bản không hậu tố vẽ lên active cel, mà active cel trôi
+  theo thao tác trước.
+- **R5 — Compose bằng shape primitives.** `draw_pixels_at` chỉ cho chi tiết ≤ ~30 pixel.
+- **R6 — Lập layer plan trước, tên layer tiếng Anh không dấu.** Tên layer là khoá tra cứu của
+  mọi tool `*_at`.
+- **R7 — Canvas nhỏ, mặc định 32×32.** Cần to hơn thì `scale` lúc export.
+- **R8 — `run_lua_script` là phương án cuối.** Phải nêu lý do cho người dùng trước khi chạy.
+
+**Kiểm chứng — cấm báo "đã xong" khi chưa đọc lại kết quả bằng tool.** Server không trả ảnh về
+cho model (mọi tool `-> str`), nên thông báo thành công của tool chỉ chứng minh lệnh chạy, không
+chứng minh hình vẽ đúng. Chạy `/asset-qc`, hoặc tối thiểu `get_sprite_info` +
+`get_composite_rect` + `compare_frames`. Client không đọc được ảnh thì nói thẳng là chưa verify
+bằng mắt. **Tool báo lỗi thì dừng và báo nguyên văn.**
+
+## 4. Model-agnostic — ràng buộc cứng
+
+Dự án phải chạy y hệt nhau trên **mọi AI client**: Claude Code, Antigravity, Gemini CLI,
+ChatGPT/Codex, Cursor, Cline, Continue và client MCP tương lai. Hệ quả bắt buộc:
+
+- **Nguồn duy nhất của rules/recipes/hooks/skills là `.agents/`.** Sửa ở `.agents/` rồi chạy
+  `node scripts/sync-agents.js`. Sửa thẳng trong `.claude/`, `.cursor/` hay bản nhúng của entry
+  point sẽ tạo file mồ côi — không bao giờ đến được các model khác, và bị ghi đè ở lần sync sau.
+- **Không dùng tính năng riêng của một client** cho thứ nằm trên đường đi chính của công việc.
+- **Cấu hình MCP không commit đường dẫn máy cá nhân.** Nguồn là `mcp-servers.template.json`;
+  `node scripts/setup-mcp.js` sinh config thật cho từng client trên từng máy.
+- **Nền tảng phát triển là Windows 11.** Đường dẫn, script và cách gọi tiến trình phải chạy đúng
+  trên Windows.
+
+## 5. Chuẩn output
+
+- **Correct, Minimal, Verifiable.** Root cause, không vá triệu chứng.
+- **Ngôn ngữ:** Tiếng Việt ~90%, giữ nguyên thuật ngữ kỹ thuật tiếng Anh.
+- **Hoàn chỉnh 100%:** không `// ... phần còn lại giữ nguyên`, không placeholder dở dang.
+- **Phản biện thẳng thắn:** thấy rủi ro logic/hiệu năng/mất dữ liệu thì nói ngay, đề xuất phương
+  án an toàn hơn. Phát hiện mình sai giữa chừng thì nói thẳng, không âm thầm vá.
+- **Phát hiện lỗi trong tài liệu gốc → đề xuất cách sửa, KHÔNG tự ghi đè.**
+- **Living Docs:** tài liệu cập nhật song song với thực thi. Xong một đầu việc thì ghi worklog
+  `Docs/Done/YYYY-MM-DD-task-name.txt`. Ưu tiên `.txt`, mọi file có mục lục ở đầu.
+- **Luôn hiển thị Status Line ở cuối phản hồi.**
+
+## 6. Bản đồ ngữ cảnh
+
+| Cần gì | Ở đâu |
+| :--- | :--- |
+| Tổng quan dự án (đọc trước tiên) | `Docs/SourceOfTruth/overview.txt` |
+| Tài liệu gốc | `Docs/SourceOfTruth/` |
+| Nhật ký quyết định | `Docs/Decisions/` |
+| Tiêu chí nghiệm thu | `Docs/QC/` |
+| Việc đã xong | `Docs/Done/` |
+| Rules đầy đủ | `.agents/rules/` |
+| Recipes thao tác Aseprite | `.agents/recipes/` |
+| Skills (`/asset-qc`, `/doc`, `/verify`...) | `.agents/skills/` |
+| Server MCP bên thứ ba | `vendor/aseprite-mcp/` (upstream, không sửa) |
+| Setup máy mới | `README.md` |
+
+<!-- END synced-hard-constraints -->

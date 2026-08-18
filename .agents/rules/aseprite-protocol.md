@@ -1,0 +1,22 @@
+# Aseprite Protocol — Rule Cứng Nạp Thường Trực
+
+Bản rút gọn. Chi tiết, lý do và bảng tra tool: `.agents/recipes/aseprite-00-playbook.md`.
+**Đọc playbook trước khi thao tác thật** — file này chỉ để chặn trường hợp quên đọc.
+
+- **R1 — Đường dẫn tuyệt đối.** Đường dẫn tương đối giải theo cwd của tiến trình server, gãy im lặng.
+- **R2 — Chốt palette trước khi vẽ pixel đầu tiên.** `apply_palette_preset` chỉ đổi bảng màu, không đổi pixel đã vẽ.
+- **R3 — Màu shading lấy từ `generate_color_ramp`.** Tự nhân/chia độ sáng ra màu "nhựa".
+- **R4 — Luôn dùng biến thể `*_at`.** Bản không hậu tố vẽ lên active cel, mà active cel trôi theo thao tác trước.
+- **R5 — Compose bằng shape primitives.** `draw_pixels_at` chỉ cho chi tiết ≤ ~30 pixel.
+- **R6 — Lập layer plan trước, tên layer tiếng Anh không dấu.** Tên layer là khoá tra cứu của mọi tool `*_at`.
+- **R7 — Canvas nhỏ, mặc định 32×32.** Cần to hơn thì `scale` lúc export, không vẽ trực tiếp ở 128×128.
+- **R8 — `run_lua_script` là phương án cuối.** Phải nêu lý do cho người dùng trước khi chạy.
+
+**Kiểm chứng — không được báo "đã xong" khi chưa đọc lại kết quả bằng tool.**
+Server không trả ảnh về cho model (mọi tool `-> str`), nên thông báo thành công của tool chỉ chứng
+minh lệnh chạy, không chứng minh hình vẽ đúng. Chạy `/asset-qc` hoặc tối thiểu tầng 1 tại mục 4.1
+của playbook. Client không đọc được ảnh thì nói thẳng là chưa verify bằng mắt.
+
+**Tool báo lỗi thì dừng và báo nguyên văn.** Cấm mô tả kết quả như thể đã vẽ xong.
+
+**Không tự xây MCP server.** Dự án dùng `diivi/aseprite-mcp` tại `vendor/aseprite-mcp` (116 tools).
