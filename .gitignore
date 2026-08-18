@@ -18,6 +18,10 @@ __pycache__/
 *.bak
 .env
 
+# IDE
+.idea/
+.vscode/
+
 # Local agent settings
 .claude/settings.local.json
 
